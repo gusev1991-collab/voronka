@@ -196,6 +196,7 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .dwrap.nodate:after{content:'без даты';position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--tx3);font-weight:700;font-size:13px;pointer-events:none}
 .dwrap.fw.nodate:after{left:0;font-size:16px;font-weight:600}
 .step .dwrap input{width:132px}
+.dclr{width:28px;height:28px;border-radius:9px;background:var(--s2);color:var(--tx3);font-size:12px;font-weight:800;display:grid;place-items:center;flex:none;margin-left:-6px}
 .nod{margin-left:auto;font-size:11px;font-weight:700;color:var(--plan);text-transform:none;letter-spacing:0;padding:0}
 .step .plus{width:32px;height:32px;border-radius:10px;background:var(--s2);display:grid;place-items:center;color:var(--tx3)}
 .step .plus svg{width:16px;height:16px}
@@ -353,7 +354,7 @@ const HINTS = {
   kpi_meet: 'Какая доля от всех, кому написал, дошла до встречи.',
   kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
   pipe: 'Кто сейчас в работе (без сливов) и на каком этапе. Нажми, чтобы открыть список.',
-  stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять или стереть («Сбросить» в календаре), если не помнишь — этап останется отмеченным «без даты». Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
+  stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять или убрать крестиком ✕ рядом с ней, если не помнишь — этап останется отмеченным «без даты». Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
   meets: 'Здесь все встречи: запланированные, прошедшие, перенесённые и отменённые. Добавляй их через «+ Встреча».\n\nЭтапы и встречи связаны: отметишь этап «Встреча» или «2-е свидание» — встреча появится здесь сама, и наоборот.\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
   lost: 'Слив — общение остановилось. Отметь причину: во вкладке «Причины» будет видно, где ты теряешь чаще всего.',
   who: 'Кто инициировал перенос или отмену.',
@@ -793,7 +794,7 @@ function drawGirl() {
     return `<div class="step ${on ? 'on' : ''} ${skip ? 'skip' : ''}" data-k="${s.k}" style="--lc:${s.c}">
       <button class="sd" data-tog="${s.k}" style="${on ? `background:${s.c};border-color:${s.c}` : ''}">${IC.check}</button>
       <div class="sl">${s.n}${skip ? '<small>пропущено</small>' : ''}</div>
-      ${skip ? q('skip') : on ? `<span class="dwrap ${isD(g.st[s.k]) ? '' : 'nodate'}"><input type="date" data-date="${s.k}" value="${isD(g.st[s.k]) ? g.st[s.k] : ''}"></span>` : `<span class="plus">${IC.plus}</span>`}
+      ${skip ? q('skip') : on ? `<span class="dwrap ${isD(g.st[s.k]) ? '' : 'nodate'}"><input type="date" data-date="${s.k}" value="${isD(g.st[s.k]) ? g.st[s.k] : ''}"></span>${isD(g.st[s.k]) ? `<button class="dclr" data-clr="${s.k}" aria-label="Без даты">✕</button>` : ''}` : `<span class="plus">${IC.plus}</span>`}
     </div>`;
   }).join('');
   const meets = [...g.meets].sort((a, b) => a.date < b.date ? 1 : -1).map(m => {
@@ -855,6 +856,7 @@ function drawGirl() {
   });
   $$('input[data-date]', page).forEach(inp => inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; inp.parentNode.classList.toggle('nodate', !inp.value); g.upd = Date.now(); save(); });
   $$('.dwrap', page).forEach(w => w.onclick = e => e.stopPropagation());
+  $$('[data-clr]', page).forEach(b => b.onclick = e => { e.stopPropagation(); g.st[+b.dataset.clr] = NODATE; g.upd = Date.now(); save(); hap('soft'); drawGirl(); });
   $('#pAddM').onclick = () => meetSheet(g);
   $$('.mrow', page).forEach(r => r.onclick = () => meetSheet(g, g.meets.find(m => m.id === r.dataset.m)));
   const lb = $('#pLost'); if (lb) lb.onclick = () => lostSheet(g);
