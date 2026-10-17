@@ -159,7 +159,21 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .lostbar .sp{flex:1}
 .busybar{display:flex;align-items:center;gap:10px;background:rgba(255,181,71,.14);color:#E89A1C;border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
 .busybar.due{background:rgba(255,92,138,.12);color:var(--acc)}
-.busybar .sp{flex:1}
+.tm{color:var(--acc);font-weight:700}
+.th{color:var(--plan);font-weight:700}
+.ballrow{display:flex;align-items:center;gap:12px}
+.ballrow .bl{font-weight:700;font-size:15px;display:flex;flex-direction:column;flex:none}
+.ballrow .bl span{display:flex;align-items:center;gap:6px}
+.ballrow .bl small{font-size:11px;color:var(--tx3);font-weight:600}
+.ballrow .seg{flex:1}
+.seg button.bme.on{background:var(--acc);color:#fff}
+.seg button.bher.on{background:var(--plan);color:#fff}
+.turns{display:flex;gap:8px;margin-bottom:12px}
+.turns button{flex:1;display:flex;align-items:center;justify-content:space-between;gap:6px;height:40px;padding:0 12px;border-radius:12px;font-weight:700;font-size:13px}
+.busybar{flex-wrap:wrap}
+.busybar .sp{flex:1 1 100%}
+.busybar .btn{flex:1;background:rgba(255,255,255,.55)}
+[data-theme=dark] .busybar .btn{background:rgba(255,255,255,.08)}
 .busybar small{display:block;font-weight:600;opacity:.85;font-size:12px;margin-top:1px}
 .g-s.busy{color:#E89A1C;font-weight:600}
 .g-s.due{color:var(--acc);font-weight:700}
@@ -198,7 +212,10 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 /* sheet */
 .bd{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;opacity:0;transition:opacity .25s}
 .bd.open{opacity:1}
-.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--s1);border-radius:26px 26px 0 0;z-index:41;padding:8px 16px calc(18px + var(--sb));transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);max-height:88vh;overflow-y:auto}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--s1);border-radius:26px 26px 0 0;z-index:41;padding:8px 16px calc(18px + var(--sb));transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);max-height:calc(100% - var(--st) - 16px);overflow-y:auto;overscroll-behavior:contain}
+textarea.auto{resize:none;overflow:hidden;display:block;line-height:1.4}
+.fld input[type=date]{text-align:left;-webkit-appearance:none;appearance:none;min-height:24px}
+.fld input[type=date]::-webkit-date-and-time-value{text-align:left}
 .sheet.open{transform:none}
 .grab{width:38px;height:5px;border-radius:3px;background:var(--s3);margin:0 auto 14px}
 .sheet h2{font-size:20px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:8px}
@@ -334,7 +351,8 @@ const HINTS = {
   speed: 'Медиана — половина случаев быстрее, половина медленнее. Считается по выборке периода.',
   losses: 'Сливы по этапу, на котором общение остановилось. Внутри — причины.',
   storage: 'Всё хранится на этом устройстве. Текстовые данные дополнительно синхронизируются в облако Telegram (фото — нет). Делай экспорт для резервной копии.',
-  busy: 'Пауза — она занята до определённой даты: уехала, работа, учёба. Так видно, почему этап стоит.\n\nКогда дата наступит, карточка поднимется наверх списка с напоминанием написать. Пауза снимается сама, как только отметишь следующий этап.',
+  busy: 'Пауза — она занята до определённой даты или без срока: уехала, работа, учёба. Так видно, почему этап стоит.\n\nКогда дата наступит, карточка поднимется наверх списка с напоминанием написать. Пауза снимается сама, как только отметишь следующий этап.',
+  ball: 'Чей ход — от кого ждём следующий шаг.\n\nМой — тебе надо написать или позвать.\nЕё — ты предложил, ждёшь ответа или её предложения.\n\nСтавится сам при отметке этапа (написал/позвал → её, ответила/встретились → мой). Меняй вручную, если иначе. Рядом видно, сколько дней длится.',
   inperiod: 'Показывать только девушек, с которыми было движение в выбранный период.',
 };
 
@@ -400,7 +418,7 @@ const cur = g => { for (let k = 7; k >= 1; k--) if (g.st[k]) return k; return 0;
 const nextStage = g => { const c = cur(g); return c >= 7 ? 0 : c === 5 ? 6 : c + 1; };
 const status = g => g.lost ? 'lost' : g.st[7] ? 'done' : 'active';
 const lastDate = g => [...Object.values(g.st), ...g.meets.map(m => m.date), g.lost && g.lost.date].filter(Boolean).sort().pop() || '';
-const busyState = g => !g.busy || g.lost || g.st[7] ? '' : g.busy.until >= today() ? 'busy' : 'due';
+const busyState = g => !g.busy || g.lost || g.st[7] ? '' : !g.busy.until || g.busy.until >= today() ? 'busy' : 'due';
 function ensureNums(renumber) {
   if (renumber) DB.girls.forEach(g => delete g.num);
   let mx = Math.max(0, ...DB.girls.map(g => g.num || 0)), ch = false;
@@ -425,12 +443,18 @@ function syncStageMeets(g) {
   }
   return ch;
 }
+const AUTO_BALL = {1: 'her', 2: 'me', 3: 'her', 4: '', 5: 'me', 6: 'me', 7: ''};
+function setBall(g, v) { v = v || ''; if ((g.ball || '') !== v) { g.ball = v; g.ballAt = today(); } }
+const ballOf = g => status(g) === 'active' && busyState(g) !== 'busy' ? (g.ball || '') : '';
+const busyTxt = g => g.busy ? [g.busy.reason, g.busy.note].filter(Boolean).join(' · ') : '';
 const byId = id => DB.girls.find(g => g.id === id);
 function newGirl({name = '', loc = '', note = '', date = today(), demo = false} = {}) {
-  return {id: uid(), name, loc, note, st: {1: date}, meets: [], lost: null, created: Date.now(), upd: Date.now(), demo};
+  return {id: uid(), name, loc, note, st: {1: date}, meets: [], lost: null, created: Date.now(), upd: Date.now(), demo, ball: 'her', ballAt: date};
 }
 function setStage(g, k, date) {
+  const before = cur(g);
   g.st[k] = date;
+  if (k >= before) setBall(g, AUTO_BALL[k]);
   for (let j = 1; j < k; j++) { if (k === 7 && j === 6) continue; if (!g.st[j]) g.st[j] = date; }
   if (g.lost && k >= g.lost.stage) g.lost = null;
   g.busy = null;
@@ -527,6 +551,11 @@ function popNav() { const c = navStack.pop(); syncBack(); c && c(); }
 function syncBack() { if (!tg || !ver('6.1')) return; navStack.length ? tg.BackButton.show() : tg.BackButton.hide(); }
 if (tg && ver('6.1')) tg.BackButton.onClick(() => popNav());
 
+/* ============ autosize textareas ============ */
+const autosize = t => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 2 + 'px'; };
+document.addEventListener('input', e => { if (e.target.matches && e.target.matches('textarea.auto')) autosize(e.target); });
+const autosizeIn = r => $$('textarea.auto', r).forEach(autosize);
+
 /* ============ sheets ============ */
 function openSheet(html, mount) {
   const wrap = $('#sheets');
@@ -550,6 +579,7 @@ function openSheet(html, mount) {
   sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) { sh.style.transition = 'none'; sh.style.transform = `translateY(${dy}px)`; } }, {passive: true});
   sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transition = ''; sh.style.transform = ''; y0 = null; if (dy > 90) close(); });
   mount && mount(sh, close);
+  requestAnimationFrame(() => autosizeIn(sh));
   return close;
 }
 
@@ -627,8 +657,10 @@ function renderFunnel(v) {
       <div class="mt">${q('canc')}<b class="num">${meets.length ? pct(bad, meets.length) + '%' : '—'}</b><span>переносы и отмены</span><small>${bad} из ${meets.length} ${plural(meets.length,'встречи','встреч','встреч')}</small></div>
     </div>
     ${pipe.length ? `<div class="card"><div class="ct">Сейчас в работе <span class="sp"></span>${q('pipe')}</div>
+      <div class="turns"><button data-turn="me" style="background:rgba(255,92,138,.12);color:var(--acc)">Мой ход <span class="num">${DB.girls.filter(g => ballOf(g) === 'me').length}</span></button><button data-turn="her" style="background:rgba(108,123,255,.12);color:var(--plan)">Жду её <span class="num">${DB.girls.filter(g => ballOf(g) === 'her').length}</span></button></div>
       <div class="pipe">${pipe.map(([k, n]) => `<button class="pp" data-pk="${k}"><span class="dot" style="background:${S(k).c}"></span>${S(k).n}<span class="num" style="color:var(--tx2)">${n}</span></button>`).join('')}</div></div>` : ''}
   `;
+  $$('[data-turn]').forEach(el => el.onclick = () => { LF.status = el.dataset.turn; LF.stage = 0; LF.period = false; TAB = 'list'; hap('soft'); render(); });
   $$('#mode button[data-m]').forEach(b => b.onclick = () => { P.mode = b.dataset.m; savePrefs(); hap('soft'); render(); });
   $$('.fr').forEach(el => el.onclick = () => { LF.stage = +el.dataset.k; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
   $$('[data-pk]').forEach(el => el.onclick = () => { LF.stage = +el.dataset.pk; LF.status = 'active'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
@@ -639,19 +671,20 @@ function renderList(v) {
   const r = range();
   let list = DB.girls.slice();
   if (LF.status === 'pause') list = list.filter(g => busyState(g));
+  else if (LF.status === 'me' || LF.status === 'her') list = list.filter(g => ballOf(g) === LF.status);
   else if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
   if (LF.stage) list = list.filter(g => cur(g) === LF.stage);
   if (LF.period) list = list.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)));
   if (LF.q) { const s = LF.q.toLowerCase().trim(), n = /^[#№]?\d+$/.test(s) ? +s.replace(/\D/g, '') : 0; list = list.filter(g => n ? g.num === n : (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
-  list.sort((a, b) => (busyState(b) === 'due') - (busyState(a) === 'due') || (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
-  const cnt = st => DB.girls.filter(g => st === 'all' || (st === 'pause' ? busyState(g) : status(g) === st)).length;
+  list.sort((a, b) => (busyState(b) === 'due') - (busyState(a) === 'due') || (ballOf(b) === 'me') - (ballOf(a) === 'me') || (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
+  const cnt = st => DB.girls.filter(g => st === 'all' || (st === 'pause' ? busyState(g) : st === 'me' || st === 'her' ? ballOf(g) === st : status(g) === st)).length;
   const chip = (st, label) => `<button class="chip ${LF.status === st ? 'on' : ''}" data-s="${st}">${label} <span class="num" style="opacity:.6">${cnt(st)}</span></button>`;
 
   v.innerHTML = `
     <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка или №" value="${esc(LF.q)}"></div>
     <div class="chips">
       ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
-      ${chip('active', 'В работе')}${cnt('pause') ? chip('pause', '⏸ Пауза') : ''}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
+      ${chip('active', 'В работе')}${cnt('me') ? chip('me', 'Мой ход') : ''}${cnt('her') ? chip('her', 'Жду её') : ''}${cnt('pause') ? chip('pause', '⏸ Пауза') : ''}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
       <button class="chip ${LF.period ? 'on' : ''}" id="lp">За период</button>
     </div>
     <div id="gl">${list.length ? list.map(cardHTML).join('') : `<div class="sub" style="padding:40px 0">Никого не найдено</div>`}</div>`;
@@ -668,8 +701,9 @@ function cardHTML(g) {
   const days = lastDate(g) ? dDiff(lastDate(g), today()) : 0;
   const bs = busyState(g);
   const sub = st === 'lost' ? `слив · ${esc(g.lost.reason || LOSS_T[g.lost.stage])}`
-    : bs === 'busy' ? `⏸ занята до ${fmt(g.busy.until)}${g.busy.reason ? ' · ' + esc(g.busy.reason) : ''}`
+    : bs === 'busy' ? `⏸ ${g.busy.until ? 'занята до ' + fmt(g.busy.until) : 'занята, без срока'}${busyTxt(g) ? ' · ' + esc(busyTxt(g)) : ''}`
     : bs === 'due' ? '⏰ пора написать'
+    : ballOf(g) ? [ballOf(g) === 'me' ? '<span class="tm">Твой ход</span>' : '<span class="th">Ждёшь её</span>', g.ballAt && dDiff(g.ballAt, today()) > 0 ? dDiff(g.ballAt, today()) + ' дн.' : 'сегодня', g.loc && esc(g.loc)].filter(Boolean).join(' · ')
     : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : 'сегодня'].filter(Boolean).join(' · ');
   let right = '';
   if (st === 'active' && nx) right = `<button class="adv" data-adv="${g.id}" style="color:${S(nx).c}">${IC.arrow}${S(nx).n}</button>`;
@@ -774,11 +808,12 @@ function drawGirl() {
     </div>
     <div class="pad">
       ${st === 'lost' ? `<div class="lostbar"><div class="sp">Слив · ${LOSS_T[g.lost.stage]}<small>${esc(g.lost.reason || '')}${g.lost.note ? ' — ' + esc(g.lost.note) : ''} · ${fmt(g.lost.date)}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pRestore">Вернуть</button></div>` : ''}
-      ${busyState(g) ? `<div class="busybar ${busyState(g) === 'due' ? 'due' : ''}"><div class="sp">${busyState(g) === 'due' ? '⏰ Пауза закончилась — пора написать' : '⏸ Занята до ' + fmt(g.busy.until)}<small>${[g.busy.reason, g.busy.until >= today() ? 'ещё ' + dDiff(today(), g.busy.until) + ' дн.' : fmt(g.busy.until)].filter(Boolean).map(esc).join(' · ')}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyEdit">Изменить</button><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyOff">Снять</button></div>` : ''}
+      ${busyState(g) ? `<div class="busybar ${busyState(g) === 'due' ? 'due' : ''}"><div class="sp">${busyState(g) === 'due' ? '⏰ Пауза закончилась — пора написать' : (g.busy.until ? '⏸ Занята до ' + fmt(g.busy.until) : '⏸ Занята, срок неизвестен')}<small>${[busyTxt(g), !g.busy.until ? (g.busy.set && dDiff(g.busy.set, today()) > 0 ? 'уже ' + dDiff(g.busy.set, today()) + ' дн.' : 'с сегодня') : g.busy.until >= today() ? 'ещё ' + dDiff(today(), g.busy.until) + ' дн.' : fmt(g.busy.until)].filter(Boolean).map(esc).join(' · ')}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyEdit">Изменить</button><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyOff">Снять</button></div>` : ''}
+      ${st === 'active' ? `<div class="card" style="padding:12px 14px"><div class="ballrow"><div class="bl"><span>Чей ход ${q('ball')}</span><small>${g.ball && g.ballAt ? 'с ' + fmt(g.ballAt) : 'не задан'}</small></div><div class="seg"><button class="bme ${g.ball === 'me' ? 'on' : ''}" data-b="me">Мой</button><button class="bher ${g.ball === 'her' ? 'on' : ''}" data-b="her">Её</button><button class="${!g.ball ? 'on' : ''}" data-b="">—</button></div></div></div>` : ''}
       <div class="card"><div class="ct">Этапы<span class="sp"></span>${q('stages')}</div><div class="steps">${steps}</div></div>
       <div class="card"><div class="ct">Встречи<span class="sp"></span>${q('meets')}<button class="addm" id="pAddM">${IC.plus.replace('<svg', '<svg width="14" height="14"')} Встреча</button></div>
         ${meets || '<div class="sub" style="text-align:left;margin:0">Пока не назначали</div>'}</div>
-      <div class="card"><div class="ct">Заметка</div><textarea class="note" id="pNote" placeholder="Что важно помнить: интересы, детали, о чём говорили">${esc(g.note)}</textarea></div>
+      <div class="card"><div class="ct">Заметка</div><textarea class="note auto" id="pNote" placeholder="Что важно помнить: интересы, детали, о чём говорили">${esc(g.note)}</textarea></div>
       <div class="acts">
         ${st === 'active' && !busyState(g) ? `<button class="btn" id="pBusy" style="color:#E89A1C">⏸ Пауза</button>` : ''}
         ${st !== 'lost' && st !== 'done' ? `<button class="btn" id="pLost" style="color:var(--bad)">Слив</button>` : ''}
@@ -787,6 +822,7 @@ function drawGirl() {
       <div class="sub">${st !== 'lost' && st !== 'done' ? 'Пауза — занята до даты ' + q('busy') + ' · Слив — общение остановилось ' + q('lost') : ''}</div>
     </div>`;
 
+  requestAnimationFrame(() => autosizeIn(page));
   let t;
   const saveSoon = () => { clearTimeout(t); t = setTimeout(save, 400); };
   $('#pName').oninput = e => { g.name = e.target.value; g.upd = Date.now(); saveSoon(); };
@@ -810,6 +846,7 @@ function drawGirl() {
   $('#pAddM').onclick = () => meetSheet(g);
   $$('.mrow', page).forEach(r => r.onclick = () => meetSheet(g, g.meets.find(m => m.id === r.dataset.m)));
   const lb = $('#pLost'); if (lb) lb.onclick = () => lostSheet(g);
+  $$('[data-b]', page).forEach(b => b.onclick = () => { setBall(g, b.dataset.b); g.upd = Date.now(); save(); hap('soft'); drawGirl(); });
   const bb = $('#pBusy'); if (bb) bb.onclick = () => busySheet(g);
   const be = $('#pBusyEdit'); if (be) be.onclick = () => busySheet(g);
   const bo = $('#pBusyOff'); if (bo) bo.onclick = () => { g.busy = null; g.upd = Date.now(); save(); hap(); drawGirl(); };
@@ -858,7 +895,7 @@ function addSheet() {
       <div class="fld"><label>Написал</label><input type="date" id="aDate" value="${today()}"></div>
       <div class="fld"><label>Уже на этапе</label><select id="aSt" style="width:100%;background:none;border:0;color:var(--tx);font:inherit;font-size:16px;font-weight:600;outline:0">${STAGES.map(s => `<option value="${s.k}">${s.n}</option>`).join('')}</select></div>
     </div>
-    <div class="fld"><label>Заметка</label><textarea id="aNote" rows="2" style="resize:none" placeholder="Необязательно"></textarea></div>
+    <div class="fld"><label>Заметка</label><textarea class="auto" id="aNote" rows="1" placeholder="Необязательно"></textarea></div>
     <button class="btn pri full" id="aSave">Добавить</button>`, (sh, close) => {
     $('#aPh', sh).onclick = () => pickPhoto(d => { photo = d; $('#aPh', sh).innerHTML = `<img src="${d}">`; });
     setTimeout(() => $('#aName', sh).focus(), 350);
@@ -887,7 +924,7 @@ function meetSheet(g, m) {
       <div class="seg" id="mWho" style="margin-bottom:12px"><button data-v="her" class="${d.who === 'her' ? 'on' : ''}">Она</button><button data-v="me" class="${d.who === 'me' ? 'on' : ''}">Я</button></div>
     </div>
     <div class="fld" id="mNewBox"><label>Новая дата</label><input type="date" id="mNew" value="${addDays(today(), 2)}"></div>
-    <div class="fld"><label>Заметка</label><input id="mNote" value="${esc(d.note)}" placeholder="Место, детали"></div>
+    <div class="fld"><label>Заметка</label><textarea class="auto" id="mNote" rows="1" placeholder="Место, детали">${esc(d.note)}</textarea></div>
     <div class="sbtns">${isNew ? '' : `<button class="btn danger" id="mDel">${IC.trash.replace('<svg', '<svg width="18" height="18"')}</button>`}<button class="btn pri" id="mSave" style="flex:3">Сохранить</button></div>`, (sh, close) => {
     const upd = () => {
       $$('#mSt button', sh).forEach(b => b.classList.toggle('on', b.dataset.v === d.status));
@@ -923,23 +960,25 @@ function meetSheet(g, m) {
 
 function busySheet(g) {
   const cur0 = g.busy || {};
-  let reason = cur0.reason || '';
-  const presets = [[3, '3 дня'], [7, 'Неделя'], [14, '2 недели'], [30, 'Месяц']];
+  let reason = cur0.reason || '', note = cur0.note || '';
+  const presets = [[3, '3 дня'], [7, 'Неделя'], [14, '2 недели'], [30, 'Месяц'], [0, 'Без срока']];
+  let noDate = !!g.busy && !cur0.until;
   const REAS = ['Уехала', 'Работа', 'Учёба / сессия', 'Болеет', 'Семья', 'Сама сказала «позже»'];
-  openSheet(`<h2>Пауза <small>· занята до</small> ${q('busy')}</h2>
-    <div class="rgrid">${presets.map(([d, n]) => `<button class="rc" data-d="${d}">${n}</button>`).join('')}</div>
-    <div class="fld"><label>Дата</label><input type="date" id="bDate" value="${cur0.until || addDays(today(), 7)}" min="${today()}"></div>
+  if (reason && !REAS.includes(reason) && !note) { const [a, ...rest] = reason.split(' — '); if (REAS.includes(a)) { reason = a; note = rest.join(' — '); } else { note = reason; reason = ''; } }
+  openSheet(`<h2>Пауза ${q('busy')}</h2>
+    <div class="slbl">Занята до</div>
+    <div class="rgrid">${presets.map(([d, n]) => `<button class="rc ${d === 0 && noDate ? 'on' : ''}" data-d="${d}">${n}</button>`).join('')}</div>
+    <div class="fld" id="bDateBox" style="${noDate ? 'display:none' : ''}"><label>Дата</label><input type="date" id="bDate" value="${cur0.until || addDays(today(), 7)}" min="${today()}"></div>
     <div class="slbl">Почему</div>
     <div class="rgrid">${REAS.map(r => `<button class="rc ${reason === r ? 'on' : ''}" data-r="${esc(r)}">${esc(r)}</button>`).join('')}</div>
-    <div class="fld"><label>Комментарий</label><input id="bNote" value="${esc(REAS.includes(reason) ? '' : reason)}" placeholder="Необязательно"></div>
+    <div class="fld"><label>Комментарий</label><textarea class="auto" id="bNote" rows="1" placeholder="Необязательно">${esc(note)}</textarea></div>
     <button class="btn pri full" id="bSave">Поставить на паузу</button>`, (sh, close) => {
-    $$('[data-d]', sh).forEach(b => b.onclick = () => { $('#bDate', sh).value = addDays(today(), +b.dataset.d); $$('[data-d]', sh).forEach(x => x.classList.toggle('on', x === b)); hap('soft'); });
+    $$('[data-d]', sh).forEach(b => b.onclick = () => { noDate = b.dataset.d === '0'; $('#bDateBox', sh).style.display = noDate ? 'none' : ''; if (!noDate) $('#bDate', sh).value = addDays(today(), +b.dataset.d); $$('[data-d]', sh).forEach(x => x.classList.toggle('on', x === b)); hap('soft'); });
     $$('[data-r]', sh).forEach(b => b.onclick = () => { const on = !b.classList.contains('on'); $$('[data-r]', sh).forEach(x => x.classList.remove('on')); if (on) b.classList.add('on'); reason = on ? b.dataset.r : ''; hap('soft'); });
     $('#bSave', sh).onclick = () => {
-      const until = $('#bDate', sh).value;
-      if (!until) { hapN('error'); toast('Укажи дату'); return; }
-      const note = $('#bNote', sh).value.trim();
-      g.busy = {until, reason: [reason, note].filter(Boolean).join(' — '), set: today()};
+      const until = noDate ? '' : $('#bDate', sh).value;
+      if (!until && !noDate) { hapN('error'); toast('Укажи дату'); return; }
+      g.busy = {until, reason, note: $('#bNote', sh).value.trim(), set: g.busy && g.busy.set ? g.busy.set : today()};
       g.upd = Date.now(); save(); hapN('success'); close(); drawGirl();
     };
   });
@@ -951,7 +990,7 @@ function lostSheet(g) {
   openSheet(`<h2>Слив <small>· ${LOSS_T[k]}</small></h2>
     <div class="slbl">Причина ${q('lost')}</div>
     <div class="rgrid">${REASONS[k].map(r => `<button class="rc" data-r="${esc(r)}">${esc(r)}</button>`).join('')}<button class="rc" data-r="__other">Другое</button></div>
-    <div class="fld"><label>Комментарий</label><input id="lNote" placeholder="Необязательно"></div>
+    <div class="fld"><label>Комментарий</label><textarea class="auto" id="lNote" rows="1" placeholder="Необязательно"></textarea></div>
     <button class="btn pri full" id="lSave">Отметить слив</button>`, (sh, close) => {
     $$('.rc', sh).forEach(b => b.onclick = () => {
       $$('.rc', sh).forEach(x => x.classList.remove('on')); b.classList.add('on'); hap('soft');
@@ -1092,7 +1131,7 @@ function applyTheme() {
   if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged'].forEach(ev => tg.onEvent(ev, applyInsets)); }
   applyInsets();
   applyTheme();
-  { let ch = ensureNums(); DB.girls.forEach(g => { if (syncStageMeets(g)) ch = true; }); if (ch) save(); }
+  { let ch = ensureNums(); DB.girls.forEach(g => { if (syncStageMeets(g)) ch = true; if (!('ball' in g)) { g.ball = status(g) === 'active' ? AUTO_BALL[cur(g)] : ''; g.ballAt = lastDate(g) || today(); ch = true; } }); if (ch) save(); }
   render();
   await idb.open();
   Object.assign(PH, await idb.all());
