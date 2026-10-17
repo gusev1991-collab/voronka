@@ -98,7 +98,10 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .av{width:50px;height:50px;border-radius:16px;flex:none;object-fit:cover;display:grid;place-items:center;font-weight:800;font-size:18px;color:#fff;overflow:hidden}
 .av img{width:100%;height:100%;object-fit:cover}
 .g-m{flex:1;min-width:0}
-.g-n{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-n{font-weight:700;font-size:16px;display:flex;align-items:baseline;gap:6px;min-width:0}
+.g-n .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gnum{flex:none;font-size:12px;font-weight:700;color:var(--tx3)}
+.h-num{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.04em;background:rgba(255,255,255,.22);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);padding:3px 8px;border-radius:8px;margin-bottom:6px}
 .g-s{font-size:12px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
 .prog{display:flex;gap:3px;margin-top:7px}
 .prog i{height:4px;flex:1;border-radius:2px;background:var(--s3)}
@@ -154,6 +157,13 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .pad{padding:14px 16px 0}
 .lostbar{display:flex;align-items:center;gap:10px;background:rgba(255,92,92,.12);color:var(--bad);border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
 .lostbar .sp{flex:1}
+.busybar{display:flex;align-items:center;gap:10px;background:rgba(255,181,71,.14);color:#E89A1C;border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
+.busybar.due{background:rgba(255,92,138,.12);color:var(--acc)}
+.busybar .sp{flex:1}
+.busybar small{display:block;font-weight:600;opacity:.85;font-size:12px;margin-top:1px}
+.g-s.busy{color:#E89A1C;font-weight:600}
+.g-s.due{color:var(--acc);font-weight:700}
+.g.due{border-color:rgba(255,92,138,.45)}
 .lostbar small{display:block;font-weight:600;opacity:.8;font-size:12px;margin-top:1px}
 
 .steps{position:relative}
@@ -317,13 +327,14 @@ const HINTS = {
   kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
   pipe: 'Кто сейчас в работе (без сливов) и на каком этапе. Нажми, чтобы открыть список.',
   stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять. Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
-  meets: 'Встреча со статусом «Была» сама отмечает этапы «Встреча» и «2-е свидание».\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
+  meets: 'Здесь все встречи: запланированные, прошедшие, перенесённые и отменённые. Добавляй их через «+ Встреча».\n\nЭтапы и встречи связаны: отметишь этап «Встреча» или «2-е свидание» — встреча появится здесь сама, и наоборот.\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
   lost: 'Слив — общение остановилось. Отметь причину: во вкладке «Причины» будет видно, где ты теряешь чаще всего.',
   who: 'Кто инициировал перенос или отмену.',
   canc: 'Доля перенесённых и отменённых от всех назначенных встреч за период.',
   speed: 'Медиана — половина случаев быстрее, половина медленнее. Считается по выборке периода.',
   losses: 'Сливы по этапу, на котором общение остановилось. Внутри — причины.',
   storage: 'Всё хранится на этом устройстве. Текстовые данные дополнительно синхронизируются в облако Telegram (фото — нет). Делай экспорт для резервной копии.',
+  busy: 'Пауза — она занята до определённой даты: уехала, работа, учёба. Так видно, почему этап стоит.\n\nКогда дата наступит, карточка поднимется наверх списка с напоминанием написать. Пауза снимается сама, как только отметишь следующий этап.',
   inperiod: 'Показывать только девушек, с которыми было движение в выбранный период.',
 };
 
@@ -333,6 +344,7 @@ let DB = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {girls: [
 let P = Object.assign({preset:'m', from:'', to:'', mode:'cohort'}, (() => { try { return JSON.parse(localStorage.getItem(LP)) || {}; } catch (e) { return {}; } })());
 const savePrefs = () => { try { localStorage.setItem(LP, JSON.stringify(P)); } catch (e) {} };
 function save() {
+  DB.girls.forEach(syncStageMeets);
   DB.savedAt = Date.now();
   try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (e) { toast('Не хватает памяти устройства'); }
   cloudSave();
@@ -377,7 +389,7 @@ function cloudLoad() {
       if (e2 || !vals) return;
       try {
         const obj = JSON.parse(Array.from({length: n}, (_, i) => vals['d' + i] || '').join(''));
-        if (obj && obj.girls && (obj.savedAt || 0) > (DB.savedAt || 0)) { DB = obj; try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (x) {} render(); }
+        if (obj && obj.girls && (obj.savedAt || 0) > (DB.savedAt || 0)) { DB = obj; ensureNums(); try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (x) {} render(); }
       } catch (x) {}
     });
   });
@@ -388,6 +400,31 @@ const cur = g => { for (let k = 7; k >= 1; k--) if (g.st[k]) return k; return 0;
 const nextStage = g => { const c = cur(g); return c >= 7 ? 0 : c === 5 ? 6 : c + 1; };
 const status = g => g.lost ? 'lost' : g.st[7] ? 'done' : 'active';
 const lastDate = g => [...Object.values(g.st), ...g.meets.map(m => m.date), g.lost && g.lost.date].filter(Boolean).sort().pop() || '';
+const busyState = g => !g.busy || g.lost || g.st[7] ? '' : g.busy.until >= today() ? 'busy' : 'due';
+function ensureNums(renumber) {
+  if (renumber) DB.girls.forEach(g => delete g.num);
+  let mx = Math.max(0, ...DB.girls.map(g => g.num || 0)), ch = false;
+  DB.girls.filter(g => !g.num).sort((a, b) => (a.st[1] || '').localeCompare(b.st[1] || '') || a.created - b.created).forEach(g => { g.num = ++mx; ch = true; });
+  return ch;
+}
+// stages 5/6 ↔ «Была» meetings: every reached meeting stage has a linked meeting in the list
+function syncStageMeets(g) {
+  let ch = false;
+  for (const k of [5, 6]) {
+    const m = g.meets.find(x => x.stage === k);
+    if (g.st[k]) {
+      if (!m) {
+        const c = g.meets.find(x => x.status === 'done' && !x.stage && x.date === g.st[k]);
+        if (c) c.stage = k; else g.meets.push({id: uid(), date: g.st[k], status: 'done', who: '', note: '', stage: k, auto: true});
+        ch = true;
+      } else if (m.date !== g.st[k]) { m.date = g.st[k]; ch = true; }
+    } else if (m) {
+      if (m.auto && m.status === 'done' && !m.note) g.meets = g.meets.filter(x => x !== m); else delete m.stage;
+      ch = true;
+    }
+  }
+  return ch;
+}
 const byId = id => DB.girls.find(g => g.id === id);
 function newGirl({name = '', loc = '', note = '', date = today(), demo = false} = {}) {
   return {id: uid(), name, loc, note, st: {1: date}, meets: [], lost: null, created: Date.now(), upd: Date.now(), demo};
@@ -396,6 +433,7 @@ function setStage(g, k, date) {
   g.st[k] = date;
   for (let j = 1; j < k; j++) { if (k === 7 && j === 6) continue; if (!g.st[j]) g.st[j] = date; }
   if (g.lost && k >= g.lost.stage) g.lost = null;
+  g.busy = null;
   g.upd = Date.now();
 }
 function unsetStage(g, k) {
@@ -600,19 +638,20 @@ function renderFunnel(v) {
 function renderList(v) {
   const r = range();
   let list = DB.girls.slice();
-  if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
+  if (LF.status === 'pause') list = list.filter(g => busyState(g));
+  else if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
   if (LF.stage) list = list.filter(g => cur(g) === LF.stage);
   if (LF.period) list = list.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)));
-  if (LF.q) { const s = LF.q.toLowerCase(); list = list.filter(g => (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
-  list.sort((a, b) => (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
-  const cnt = st => DB.girls.filter(g => st === 'all' || status(g) === st).length;
+  if (LF.q) { const s = LF.q.toLowerCase().trim(), n = /^[#№]?\d+$/.test(s) ? +s.replace(/\D/g, '') : 0; list = list.filter(g => n ? g.num === n : (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
+  list.sort((a, b) => (busyState(b) === 'due') - (busyState(a) === 'due') || (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
+  const cnt = st => DB.girls.filter(g => st === 'all' || (st === 'pause' ? busyState(g) : status(g) === st)).length;
   const chip = (st, label) => `<button class="chip ${LF.status === st ? 'on' : ''}" data-s="${st}">${label} <span class="num" style="opacity:.6">${cnt(st)}</span></button>`;
 
   v.innerHTML = `
-    <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка" value="${esc(LF.q)}"></div>
+    <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка или №" value="${esc(LF.q)}"></div>
     <div class="chips">
       ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
-      ${chip('active', 'В работе')}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
+      ${chip('active', 'В работе')}${cnt('pause') ? chip('pause', '⏸ Пауза') : ''}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
       <button class="chip ${LF.period ? 'on' : ''}" id="lp">За период</button>
     </div>
     <div id="gl">${list.length ? list.map(cardHTML).join('') : `<div class="sub" style="padding:40px 0">Никого не найдено</div>`}</div>`;
@@ -627,13 +666,17 @@ function cardHTML(g) {
   const c = cur(g), st = status(g), nx = nextStage(g);
   const prog = STAGES.map(s => `<i style="${g.st[s.k] ? 'background:' + s.c : ''}"></i>`).join('');
   const days = lastDate(g) ? dDiff(lastDate(g), today()) : 0;
-  const sub = st === 'lost' ? `слив · ${esc(g.lost.reason || LOSS_T[g.lost.stage])}` : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : 'сегодня'].filter(Boolean).join(' · ');
+  const bs = busyState(g);
+  const sub = st === 'lost' ? `слив · ${esc(g.lost.reason || LOSS_T[g.lost.stage])}`
+    : bs === 'busy' ? `⏸ занята до ${fmt(g.busy.until)}${g.busy.reason ? ' · ' + esc(g.busy.reason) : ''}`
+    : bs === 'due' ? '⏰ пора написать'
+    : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : 'сегодня'].filter(Boolean).join(' · ');
   let right = '';
   if (st === 'active' && nx) right = `<button class="adv" data-adv="${g.id}" style="color:${S(nx).c}">${IC.arrow}${S(nx).n}</button>`;
   else if (st === 'done') right = `<span class="badge" style="background:rgba(255,147,70,.15);color:#FF9346">🔥</span>`;
-  return `<div class="g ${st === 'lost' ? 'lost' : ''}" data-id="${g.id}">
+  return `<div class="g ${st === 'lost' ? 'lost' : ''} ${bs === 'due' ? 'due' : ''}" data-id="${g.id}">
     ${avatar(g)}
-    <div class="g-m"><div class="g-n">${esc(g.name || 'Без имени')}</div><div class="g-s">${sub}</div><div class="prog">${prog}</div></div>
+    <div class="g-m"><div class="g-n"><span class="nm">${esc(g.name || 'Без имени')}</span>${g.num ? `<span class="gnum num">#${g.num}</span>` : ''}</div><div class="g-s ${bs}">${sub}</div><div class="prog">${prog}</div></div>
     ${right}
   </div>`;
 }
@@ -713,7 +756,7 @@ function drawGirl() {
     const whoTxt = (m.status === 'resch' || m.status === 'cancel') && m.who ? (m.who === 'me' ? ' · я' : ' · она') : '';
     return `<div class="mrow" data-m="${m.id}">
       <div class="mdate"><b class="num">${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
-      <div class="mm"><span class="tag" style="background:${t.c}22;color:${t.c}">${t.n}${whoTxt}</span>${m.note ? `<div class="ms">${esc(m.note)}</div>` : `<div class="ms">${WD[d.getDay()]}</div>`}</div>
+      <div class="mm"><span class="tag" style="background:${t.c}22;color:${t.c}">${t.n}${whoTxt}</span><div class="ms">${[m.stage === 5 ? '1-я встреча' : m.stage === 6 ? '2-е свидание' : '', m.note ? esc(m.note) : WD[d.getDay()]].filter(Boolean).join(' · ')}</div></div>
     </div>`;
   }).join('');
   const locs = [...new Set(DB.girls.map(x => x.loc).filter(Boolean))];
@@ -723,6 +766,7 @@ function drawGirl() {
       ${ph ? `<img class="bgimg" src="${ph}" alt="">` : `<div class="bgini">${esc(initials(g.name))}</div>`}
       <div class="hero-top"><button class="hbtn" id="pBack">${IC.back}</button><button class="hbtn" id="pCam">${IC.cam}</button></div>
       <div class="hero-b">
+        ${g.num ? `<span class="h-num num">№ ${g.num}</span>` : ''}
         <input class="h-name" id="pName" value="${esc(g.name)}" placeholder="Имя">
         <div class="h-loc">${IC.pin}<input id="pLoc" list="locs" value="${esc(g.loc)}" placeholder="Где познакомились"></div>
         <datalist id="locs">${locs.map(l => `<option value="${esc(l)}">`).join('')}</datalist>
@@ -730,15 +774,17 @@ function drawGirl() {
     </div>
     <div class="pad">
       ${st === 'lost' ? `<div class="lostbar"><div class="sp">Слив · ${LOSS_T[g.lost.stage]}<small>${esc(g.lost.reason || '')}${g.lost.note ? ' — ' + esc(g.lost.note) : ''} · ${fmt(g.lost.date)}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pRestore">Вернуть</button></div>` : ''}
+      ${busyState(g) ? `<div class="busybar ${busyState(g) === 'due' ? 'due' : ''}"><div class="sp">${busyState(g) === 'due' ? '⏰ Пауза закончилась — пора написать' : '⏸ Занята до ' + fmt(g.busy.until)}<small>${[g.busy.reason, g.busy.until >= today() ? 'ещё ' + dDiff(today(), g.busy.until) + ' дн.' : fmt(g.busy.until)].filter(Boolean).map(esc).join(' · ')}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyEdit">Изменить</button><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyOff">Снять</button></div>` : ''}
       <div class="card"><div class="ct">Этапы<span class="sp"></span>${q('stages')}</div><div class="steps">${steps}</div></div>
       <div class="card"><div class="ct">Встречи<span class="sp"></span>${q('meets')}<button class="addm" id="pAddM">${IC.plus.replace('<svg', '<svg width="14" height="14"')} Встреча</button></div>
         ${meets || '<div class="sub" style="text-align:left;margin:0">Пока не назначали</div>'}</div>
       <div class="card"><div class="ct">Заметка</div><textarea class="note" id="pNote" placeholder="Что важно помнить: интересы, детали, о чём говорили">${esc(g.note)}</textarea></div>
       <div class="acts">
+        ${st === 'active' && !busyState(g) ? `<button class="btn" id="pBusy" style="color:#E89A1C">⏸ Пауза</button>` : ''}
         ${st !== 'lost' && st !== 'done' ? `<button class="btn" id="pLost" style="color:var(--bad)">Слив</button>` : ''}
         <button class="btn ghost" id="pDel">${IC.trash.replace('<svg', '<svg width="18" height="18"')} Удалить</button>
       </div>
-      <div class="sub">${st !== 'lost' && st !== 'done' ? 'Слив — если общение остановилось ' + q('lost') : ''}</div>
+      <div class="sub">${st !== 'lost' && st !== 'done' ? 'Пауза — занята до даты ' + q('busy') + ' · Слив — общение остановилось ' + q('lost') : ''}</div>
     </div>`;
 
   let t;
@@ -764,6 +810,9 @@ function drawGirl() {
   $('#pAddM').onclick = () => meetSheet(g);
   $$('.mrow', page).forEach(r => r.onclick = () => meetSheet(g, g.meets.find(m => m.id === r.dataset.m)));
   const lb = $('#pLost'); if (lb) lb.onclick = () => lostSheet(g);
+  const bb = $('#pBusy'); if (bb) bb.onclick = () => busySheet(g);
+  const be = $('#pBusyEdit'); if (be) be.onclick = () => busySheet(g);
+  const bo = $('#pBusyOff'); if (bo) bo.onclick = () => { g.busy = null; g.upd = Date.now(); save(); hap(); drawGirl(); };
   const rb = $('#pRestore'); if (rb) rb.onclick = () => { g.lost = null; g.upd = Date.now(); save(); hapN('success'); drawGirl(); };
   $('#pDel').onclick = () => confirmBox(`Удалить ${g.name || 'карточку'} безвозвратно?`, () => {
     DB.girls = DB.girls.filter(x => x.id !== g.id); setPhoto(g.id, null); save(); closeGirl(); toast('Удалено');
@@ -819,6 +868,7 @@ function addSheet() {
       const date = $('#aDate', sh).value || today();
       const g = newGirl({name, loc: $('#aLoc', sh).value.trim(), note: $('#aNote', sh).value.trim(), date});
       const k = +$('#aSt', sh).value; if (k > 1) setStage(g, k, date);
+      g.num = Math.max(0, ...DB.girls.map(x => x.num || 0)) + 1;
       DB.girls.unshift(g); if (photo) setPhoto(g.id, photo); save(); hapN('success'); close();
       TAB = 'list'; LF.status = 'active'; LF.stage = 0; LF.q = ''; render(); toast(`${name} добавлена`);
     };
@@ -853,6 +903,10 @@ function meetSheet(g, m) {
       if (d.status !== 'resch' && d.status !== 'cancel') d.who = '';
       const wasResch = m && m.status === 'resch';
       if (isNew) g.meets.push(d); else Object.assign(m, d);
+      if (!isNew && m.stage) {
+        if (m.status === 'done') g.st[m.stage] = m.date;
+        else { const k = m.stage; delete m.stage; m.auto = false; unsetStage(g, k); }
+      }
       if (d.status === 'resch' && !wasResch) {
         const nd = $('#mNew', sh).value;
         if (nd) g.meets.push({id: uid(), date: nd, status: 'plan', who: '', note: d.note});
@@ -860,7 +914,34 @@ function meetSheet(g, m) {
       syncMeets(g); g.upd = Date.now(); save(); hapN('success'); close(); drawGirl();
     };
     const del = $('#mDel', sh);
-    if (del) del.onclick = () => { g.meets = g.meets.filter(x => x.id !== m.id); g.upd = Date.now(); save(); close(); drawGirl(); };
+    if (del) del.onclick = () => {
+      const go = () => { const k = m.stage; g.meets = g.meets.filter(x => x.id !== m.id); if (k) unsetStage(g, k); g.upd = Date.now(); save(); close(); drawGirl(); };
+      m.stage ? confirmBox(`Это ${m.stage === 5 ? 'первая встреча' : '2-е свидание'}. Удалить и снять этап «${S(m.stage).n}»?`, go) : go();
+    };
+  });
+}
+
+function busySheet(g) {
+  const cur0 = g.busy || {};
+  let reason = cur0.reason || '';
+  const presets = [[3, '3 дня'], [7, 'Неделя'], [14, '2 недели'], [30, 'Месяц']];
+  const REAS = ['Уехала', 'Работа', 'Учёба / сессия', 'Болеет', 'Семья', 'Сама сказала «позже»'];
+  openSheet(`<h2>Пауза <small>· занята до</small> ${q('busy')}</h2>
+    <div class="rgrid">${presets.map(([d, n]) => `<button class="rc" data-d="${d}">${n}</button>`).join('')}</div>
+    <div class="fld"><label>Дата</label><input type="date" id="bDate" value="${cur0.until || addDays(today(), 7)}" min="${today()}"></div>
+    <div class="slbl">Почему</div>
+    <div class="rgrid">${REAS.map(r => `<button class="rc ${reason === r ? 'on' : ''}" data-r="${esc(r)}">${esc(r)}</button>`).join('')}</div>
+    <div class="fld"><label>Комментарий</label><input id="bNote" value="${esc(REAS.includes(reason) ? '' : reason)}" placeholder="Необязательно"></div>
+    <button class="btn pri full" id="bSave">Поставить на паузу</button>`, (sh, close) => {
+    $$('[data-d]', sh).forEach(b => b.onclick = () => { $('#bDate', sh).value = addDays(today(), +b.dataset.d); $$('[data-d]', sh).forEach(x => x.classList.toggle('on', x === b)); hap('soft'); });
+    $$('[data-r]', sh).forEach(b => b.onclick = () => { const on = !b.classList.contains('on'); $$('[data-r]', sh).forEach(x => x.classList.remove('on')); if (on) b.classList.add('on'); reason = on ? b.dataset.r : ''; hap('soft'); });
+    $('#bSave', sh).onclick = () => {
+      const until = $('#bDate', sh).value;
+      if (!until) { hapN('error'); toast('Укажи дату'); return; }
+      const note = $('#bNote', sh).value.trim();
+      g.busy = {until, reason: [reason, note].filter(Boolean).join(' — '), set: today()};
+      g.upd = Date.now(); save(); hapN('success'); close(); drawGirl();
+    };
   });
 }
 
@@ -926,7 +1007,7 @@ function settingsSheet() {
       a.download = `voronka-${today()}.json`; document.body.append(a); a.click(); a.remove();
     };
     $('#sImp', sh).onclick = () => { close(); importSheet(); };
-    const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); DB.girls = DB.girls.filter(g => !g.demo); save(); close(); render(); toast('Демо удалено'); };
+    const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); DB.girls = DB.girls.filter(g => !g.demo); ensureNums(true); save(); close(); render(); toast('Демо удалено'); };
     $('#sWipe', sh).onclick = () => confirmBox('Стереть все карточки и фото? Это необратимо.', () => {
       DB.girls.forEach(g => setPhoto(g.id, null)); DB.girls = []; save(); close(); render();
     });
@@ -943,7 +1024,7 @@ function importSheet() {
         const o = JSON.parse(txt); if (!o || !Array.isArray(o.girls)) throw 0;
         confirmBox(`Заменить данные на ${o.girls.length} ${plural(o.girls.length,'карточку','карточки','карточек')}?`, () => {
           DB.girls.forEach(g => setPhoto(g.id, null));
-          DB.girls = o.girls; if (o.photos) Object.entries(o.photos).forEach(([k, v]) => setPhoto(k, v));
+          DB.girls = o.girls; ensureNums(); if (o.photos) Object.entries(o.photos).forEach(([k, v]) => setPhoto(k, v));
           save(); close(); render(); hapN('success'); toast('Восстановлено');
         });
       } catch (e) { hapN('error'); toast('Не похоже на бэкап'); }
@@ -985,6 +1066,7 @@ function makeDemo() {
     }
     DB.girls.push(g);
   });
+  ensureNums();
 }
 
 /* ============ boot ============ */
@@ -1010,6 +1092,7 @@ function applyTheme() {
   if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged'].forEach(ev => tg.onEvent(ev, applyInsets)); }
   applyInsets();
   applyTheme();
+  { let ch = ensureNums(); DB.girls.forEach(g => { if (syncStageMeets(g)) ch = true; }); if (ch) save(); }
   render();
   await idb.open();
   Object.assign(PH, await idb.all());
