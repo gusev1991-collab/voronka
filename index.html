@@ -853,7 +853,12 @@ function drawGirl() {
       setStage(g, k, today()); save(); hapN('success'); drawGirl();
     }
   });
-  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; g.upd = Date.now(); save(); drawGirl(); });
+  // iOS sets today's value the moment the picker opens and fires change — never re-render while it is open
+  $$('input[data-date]', page).forEach(inp => {
+    let dirty = false;
+    inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; inp.parentNode.classList.toggle('nodate', !inp.value); g.upd = Date.now(); dirty = true; save(); };
+    inp.onblur = () => { if (dirty) { dirty = false; setTimeout(() => { if (PAGE_ID === g.id && document.activeElement?.type !== 'date') { const y = page.scrollTop; drawGirl(); page.scrollTop = y; } }, 400); } };
+  });
   $$('.dwrap', page).forEach(w => w.onclick = e => e.stopPropagation());
   $$('[data-clr]', page).forEach(b => b.onclick = e => { e.stopPropagation(); g.st[+b.dataset.clr] = NODATE; g.upd = Date.now(); save(); hap('soft'); drawGirl(); });
   $('#pAddM').onclick = () => meetSheet(g);
