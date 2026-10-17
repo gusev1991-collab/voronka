@@ -156,7 +156,10 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .h-loc input::placeholder{color:rgba(255,255,255,.55)}
 .pad{padding:14px 16px 0}
 .lostbar{display:flex;align-items:center;gap:10px;background:rgba(255,92,92,.12);color:var(--bad);border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
-.lostbar .sp{flex:1}
+.lostbar{flex-wrap:wrap}
+.lostbar .sp{flex:1 1 100%}
+.lostbar .btn{flex:1;background:rgba(255,255,255,.06)}
+[data-theme=light] .lostbar .btn{background:rgba(255,255,255,.6)}
 .busybar{display:flex;align-items:center;gap:10px;background:rgba(255,181,71,.14);color:#E89A1C;border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
 .busybar.due{background:rgba(255,92,138,.12);color:var(--acc)}
 .tm{color:var(--acc);font-weight:700}
@@ -350,7 +353,7 @@ const HINTS = {
   sex: 'Секс может случиться уже на первой встрече, поэтому этот этап считается от «Встречи», а не от «2-го свидания».',
   skip: 'Секс случился до второго свидания — этап пропущен, это нормально.',
   firstdate: 'Сколько раз секс был уже на первой встрече, без второго свидания.',
-  kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События). Этапы без даты учитываются только в периоде «Всё время».',
+  kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События). Если у этапа нет даты, для периода берётся дата следующего этапа с датой, а если дат нет совсем — день, когда карточка добавлена.',
   kpi_meet: 'Какая доля от всех, кому написал, дошла до встречи.',
   kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
   pipe: 'Кто сейчас в работе (без сливов) и на каком этапе остановился — за всё время, без учёта периода. Нажми, чтобы открыть список.',
@@ -498,6 +501,14 @@ function range() {
     default: return ['0000-01-01', '9999-12-31'];
   }
 }
+// stage date for period math: own date → else the nearest dated later stage (it happened no later) → else the day the card was added
+function effDate(g, k) {
+  if (isD(g.st[k])) return g.st[k];
+  for (let j = k + 1; j <= 7; j++) if (isD(g.st[j])) return g.st[j];
+  return ds(new Date(g.created || Date.now()));
+}
+const stInR = (g, k, r) => !!g.st[k] && inR(effDate(g, k), r);
+const anyStInR = (g, r) => [1,2,3,4,5,6,7].some(k => stInR(g, k, r));
 const inR = (d, r) => d === NODATE ? r[0] === '0000-01-01' && r[1] === '9999-12-31' : !!d && d >= r[0] && d <= r[1];
 function periodLabel() {
   if (P.preset === 'custom') { return (P.from ? fmt(P.from) : '…') + ' – ' + (P.to ? fmt(P.to) : '…'); }
@@ -507,11 +518,11 @@ function sample() {
   const r = range(), res = [0,0,0,0,0,0,0,0];
   let pool;
   if (P.mode === 'cohort') {
-    pool = DB.girls.filter(g => inR(g.st[1], r));
+    pool = DB.girls.filter(g => stInR(g, 1, r));
     pool.forEach(g => { for (let k = 1; k <= 7; k++) if (g.st[k]) res[k]++; });
   } else {
-    pool = DB.girls.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)) || (g.lost && inR(g.lost.date, r)));
-    DB.girls.forEach(g => { for (let k = 1; k <= 7; k++) if (inR(g.st[k], r)) res[k]++; });
+    pool = DB.girls.filter(g => anyStInR(g, r) || g.meets.some(m => inR(m.date, r)) || (g.lost && inR(g.lost.date, r)));
+    DB.girls.forEach(g => { for (let k = 1; k <= 7; k++) if (stInR(g, k, r)) res[k]++; });
   }
   return {r, res, pool};
 }
@@ -642,7 +653,7 @@ function renderFunnel(v) {
       <div class="fr-c num">${sc === null ? '<b style="color:var(--tx3)">—</b>' : `<b>${sc}%</b><small>${fs}%</small>`}</div>
     </div>`;
   }).join('');
-  const firstDate = pool.filter(g => g.st[7] && !g.st[6] && (P.mode === 'cohort' || inR(g.st[7], r))).length;
+  const firstDate = pool.filter(g => g.st[7] && !g.st[6] && (P.mode === 'cohort' || stInR(g, 7, r))).length;
   const meets = DB.girls.flatMap(g => g.meets).filter(m => inR(m.date, r));
   const bad = meets.filter(m => m.status === 'resch' || m.status === 'cancel').length;
   const active = DB.girls.filter(g => status(g) === 'active');
@@ -675,7 +686,7 @@ function renderFunnel(v) {
   $$('#mode button[data-m]').forEach(b => b.onclick = () => { P.mode = b.dataset.m; savePrefs(); hap('soft'); render(); });
   $$('.fr').forEach(el => el.onclick = () => {
     const k = +el.dataset.k;
-    const ids = (P.mode === 'cohort' ? pool.filter(g => g.st[k]) : DB.girls.filter(g => inR(g.st[k], r))).map(g => g.id);
+    const ids = (P.mode === 'cohort' ? pool.filter(g => g.st[k]) : DB.girls.filter(g => stInR(g, k, r))).map(g => g.id);
     LF.reach = {k, ids, label: periodLabel()}; LF.stage = 0; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render();
   });
   $$('[data-pk]').forEach(el => el.onclick = () => { LF.stage = +el.dataset.pk; LF.status = 'active'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
@@ -690,7 +701,7 @@ function renderList(v) {
   else if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
   if (LF.stage) list = list.filter(g => cur(g) === LF.stage);
   if (LF.reach) list = list.filter(g => LF.reach.ids.includes(g.id));
-  if (LF.period) list = list.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)));
+  if (LF.period) list = list.filter(g => anyStInR(g, r) || g.meets.some(m => inR(m.date, r)));
   if (LF.q) { const s = LF.q.toLowerCase().trim(), n = /^[#№]?\d+$/.test(s) ? +s.replace(/\D/g, '') : 0; list = list.filter(g => n ? g.num === n : (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
   list.sort((a, b) => (busyState(b) === 'due') - (busyState(a) === 'due') || (ballOf(b) === 'me') - (ballOf(a) === 'me') || (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
   const cnt = st => DB.girls.filter(g => st === 'all' || (st === 'pause' ? busyState(g) : st === 'me' || st === 'her' ? ballOf(g) === st : status(g) === st)).length;
@@ -825,7 +836,7 @@ function drawGirl() {
       </div>
     </div>
     <div class="pad">
-      ${st === 'lost' ? `<div class="lostbar"><div class="sp">Слив · ${LOSS_T[g.lost.stage]}<small>${esc(g.lost.reason || '')}${g.lost.note ? ' — ' + esc(g.lost.note) : ''} · ${fmt(g.lost.date)}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pRestore">Вернуть</button></div>` : ''}
+      ${st === 'lost' ? `<div class="lostbar"><div class="sp">Слив · ${LOSS_T[g.lost.stage]}<small>${esc(g.lost.reason || '')}${g.lost.note ? ' — ' + esc(g.lost.note) : ''} · ${fmt(g.lost.date)}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px;color:var(--bad)" id="pLostEdit">Изменить</button><button class="btn" style="height:36px;padding:0 12px;font-size:13px;color:var(--bad)" id="pRestore">Вернуть в работу</button></div>` : ''}
       ${busyState(g) ? `<div class="busybar ${busyState(g) === 'due' ? 'due' : ''}"><div class="sp">${busyState(g) === 'due' ? '⏰ Пауза закончилась — пора написать' : (g.busy.until ? '⏸ Занята до ' + fmt(g.busy.until) : '⏸ Занята, срок неизвестен')}<small>${[busyTxt(g), !g.busy.until ? (g.busy.set && dDiff(g.busy.set, today()) > 0 ? 'уже ' + dDiff(g.busy.set, today()) + ' дн.' : 'с сегодня') : g.busy.until >= today() ? 'ещё ' + dDiff(today(), g.busy.until) + ' дн.' : fmt(g.busy.until)].filter(Boolean).map(esc).join(' · ')}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyEdit">Изменить</button><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pBusyOff">Снять</button></div>` : ''}
       ${st === 'active' ? `<div class="card" style="padding:12px 14px"><div class="ballrow"><div class="bl"><span>Чей ход ${q('ball')}</span><small>${g.ball && g.ballAt ? 'с ' + fmt(g.ballAt) : 'не задан'}</small></div><div class="seg"><button class="bme ${g.ball === 'me' ? 'on' : ''}" data-b="me">Мой</button><button class="bher ${g.ball === 'her' ? 'on' : ''}" data-b="her">Её</button><button class="${!g.ball ? 'on' : ''}" data-b="">—</button></div></div></div>` : ''}
       <div class="card"><div class="ct">Этапы<span class="sp"></span>${q('stages')}</div><div class="steps">${steps}</div></div>
@@ -875,6 +886,7 @@ function drawGirl() {
   const bb = $('#pBusy'); if (bb) bb.onclick = () => busySheet(g);
   const be = $('#pBusyEdit'); if (be) be.onclick = () => busySheet(g);
   const bo = $('#pBusyOff'); if (bo) bo.onclick = () => { g.busy = null; g.upd = Date.now(); save(); hap(); drawGirl(); };
+  const le = $('#pLostEdit'); if (le) le.onclick = () => lostSheet(g);
   const rb = $('#pRestore'); if (rb) rb.onclick = () => { g.lost = null; g.upd = Date.now(); save(); hapN('success'); drawGirl(); };
   $('#pDel').onclick = () => confirmBox(`Удалить ${g.name || 'карточку'} безвозвратно?`, () => {
     DB.girls = DB.girls.filter(x => x.id !== g.id); setPhoto(g.id, null); save(); closeGirl(); toast('Удалено');
@@ -1016,23 +1028,30 @@ function busySheet(g) {
 }
 
 function lostSheet(g) {
-  const k = nextStage(g) || 7;
-  let reason = '';
+  const edit = !!g.lost;
+  const k = edit ? g.lost.stage : (nextStage(g) || 7);
+  let reason = '', noteInit = '';
+  if (edit) {
+    if (REASONS[k].includes(g.lost.reason)) { reason = g.lost.reason; noteInit = g.lost.note || ''; }
+    else { reason = '__other'; noteInit = [g.lost.reason === 'Другое' ? '' : g.lost.reason, g.lost.note].filter(Boolean).join(' — '); }
+  }
   openSheet(`<h2>Слив <small>· ${LOSS_T[k]}</small></h2>
     <div class="slbl">Причина ${q('lost')}</div>
-    <div class="rgrid">${REASONS[k].map(r => `<button class="rc" data-r="${esc(r)}">${esc(r)}</button>`).join('')}<button class="rc" data-r="__other">Другое</button></div>
-    <div class="fld"><label>Комментарий</label><textarea class="auto" id="lNote" rows="1" placeholder="Необязательно"></textarea></div>
-    <button class="btn pri full" id="lSave">Отметить слив</button>`, (sh, close) => {
+    <div class="rgrid">${REASONS[k].map(r => `<button class="rc ${reason === r ? 'on' : ''}" data-r="${esc(r)}">${esc(r)}</button>`).join('')}<button class="rc ${reason === '__other' ? 'on' : ''}" data-r="__other">Другое</button></div>
+    <div class="fld"><label>Комментарий</label><textarea class="auto" id="lNote" rows="1" placeholder="${reason === '__other' ? 'Опиши причину' : 'Необязательно'}">${esc(noteInit)}</textarea></div>
+    <button class="btn pri full" id="lSave">${edit ? 'Сохранить' : 'Отметить слив'}</button>`, (sh, close) => {
     $$('.rc', sh).forEach(b => b.onclick = () => {
       $$('.rc', sh).forEach(x => x.classList.remove('on')); b.classList.add('on'); hap('soft');
-      reason = b.dataset.r; if (reason === '__other') $('#lNote', sh).focus();
+      reason = b.dataset.r;
+      $('#lNote', sh).placeholder = reason === '__other' ? 'Опиши причину' : 'Необязательно';
+      if (reason === '__other') $('#lNote', sh).focus();
     });
     $('#lSave', sh).onclick = () => {
       const note = $('#lNote', sh).value.trim();
       let rs = reason === '__other' ? (note || 'Другое') : reason;
       if (!rs) { hapN('error'); toast('Выбери причину'); return; }
-      g.lost = {stage: k, reason: rs, note: reason === '__other' ? '' : note, date: today()};
-      g.upd = Date.now(); save(); hapN('warning'); close(); drawGirl();
+      g.lost = {stage: k, reason: rs, note: reason === '__other' ? '' : note, date: edit ? g.lost.date : today()};
+      g.upd = Date.now(); save(); hapN(edit ? 'success' : 'warning'); close(); drawGirl();
     };
   });
 }
