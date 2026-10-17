@@ -441,7 +441,6 @@ function syncStageMeets(g) {
   let ch = false;
   for (const k of [5, 6]) {
     const m = g.meets.find(x => x.stage === k);
-    if (g.st[k] === NODATE) continue;
     if (g.st[k]) {
       if (!m) {
         const c = g.meets.find(x => x.status === 'done' && !x.stage && x.date === g.st[k]);
@@ -798,11 +797,11 @@ function drawGirl() {
     </div>`;
   }).join('');
   const meets = [...g.meets].sort((a, b) => a.date < b.date ? 1 : -1).map(m => {
-    const d = new Date(m.date + 'T12:00:00'), t = MST[m.status];
+    const hasD = isD(m.date), d = new Date((hasD ? m.date : today()) + 'T12:00:00'), t = MST[m.status];
     const whoTxt = (m.status === 'resch' || m.status === 'cancel') && m.who ? (m.who === 'me' ? ' · я' : ' · она') : '';
     return `<div class="mrow" data-m="${m.id}">
-      <div class="mdate"><b class="num">${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
-      <div class="mm"><span class="tag" style="background:${t.c}22;color:${t.c}">${t.n}${whoTxt}</span><div class="ms">${[m.stage === 5 ? '1-я встреча' : m.stage === 6 ? '2-е свидание' : '', m.note ? esc(m.note) : WD[d.getDay()]].filter(Boolean).join(' · ')}</div></div>
+      <div class="mdate">${hasD ? `<b class="num">${d.getDate()}</b><span>${MON[d.getMonth()]}</span>` : '<b style="color:var(--tx3)">—</b><span>дата ?</span>'}</div>
+      <div class="mm"><span class="tag" style="background:${t.c}22;color:${t.c}">${t.n}${whoTxt}</span><div class="ms">${[m.stage === 5 ? '1-я встреча' : m.stage === 6 ? '2-е свидание' : '', m.note ? esc(m.note) : hasD ? WD[d.getDay()] : 'без даты'].filter(Boolean).join(' · ')}</div></div>
     </div>`;
   }).join('');
   const locs = [...new Set(DB.girls.map(x => x.loc).filter(Boolean))];
@@ -854,7 +853,7 @@ function drawGirl() {
       setStage(g, k, today()); save(); hapN('success'); drawGirl();
     }
   });
-  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; inp.parentNode.classList.toggle('nodate', !inp.value); g.upd = Date.now(); save(); });
+  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; g.upd = Date.now(); save(); drawGirl(); });
   $$('.dwrap', page).forEach(w => w.onclick = e => e.stopPropagation());
   $$('[data-clr]', page).forEach(b => b.onclick = e => { e.stopPropagation(); g.st[+b.dataset.clr] = NODATE; g.upd = Date.now(); save(); hap('soft'); drawGirl(); });
   $('#pAddM').onclick = () => meetSheet(g);
@@ -933,7 +932,7 @@ function meetSheet(g, m) {
   const isNew = !m;
   const d = m ? {...m} : {id: uid(), date: today(), status: 'plan', who: '', note: ''};
   openSheet(`<h2>${isNew ? 'Новая встреча' : 'Встреча'}</h2>
-    <div class="fld"><label>Дата</label><input type="date" id="mDate" value="${d.date}"></div>
+    <div class="fld"><label>Дата <button class="nod" id="mNoD">не помню</button></label><span class="dwrap fw ${isD(d.date) ? '' : 'nodate'}"><input type="date" id="mDate" value="${isD(d.date) ? d.date : ''}"></span></div>
     <div class="slbl">Статус</div>
     <div class="seg" id="mSt" style="margin-bottom:12px">${Object.entries(MST).map(([k, v]) => `<button data-v="${k}" class="${d.status === k ? 'on' : ''}">${v.n}</button>`).join('')}</div>
     <div id="mWhoBox">
@@ -943,6 +942,9 @@ function meetSheet(g, m) {
     <div class="fld" id="mNewBox"><label>Новая дата</label><input type="date" id="mNew" value="${addDays(today(), 2)}"></div>
     <div class="fld"><label>Заметка</label><textarea class="auto" id="mNote" rows="1" placeholder="Место, детали">${esc(d.note)}</textarea></div>
     <div class="sbtns">${isNew ? '' : `<button class="btn danger" id="mDel">${IC.trash.replace('<svg', '<svg width="18" height="18"')}</button>`}<button class="btn pri" id="mSave" style="flex:3">Сохранить</button></div>`, (sh, close) => {
+    const mD = $('#mDate', sh), syncMD = () => mD.parentNode.classList.toggle('nodate', !mD.value);
+    mD.onchange = syncMD; mD.oninput = syncMD;
+    $('#mNoD', sh).onclick = () => { mD.value = ''; syncMD(); hap('soft'); };
     const upd = () => {
       $$('#mSt button', sh).forEach(b => b.classList.toggle('on', b.dataset.v === d.status));
       $$('#mWho button', sh).forEach(b => b.classList.toggle('on', b.dataset.v === d.who));
@@ -953,7 +955,7 @@ function meetSheet(g, m) {
     $$('#mWho button', sh).forEach(b => b.onclick = () => { d.who = b.dataset.v; hap('soft'); upd(); });
     upd();
     $('#mSave', sh).onclick = () => {
-      d.date = $('#mDate', sh).value || today(); d.note = $('#mNote', sh).value.trim();
+      d.date = $('#mDate', sh).value || NODATE; d.note = $('#mNote', sh).value.trim();
       if (d.status !== 'resch' && d.status !== 'cancel') d.who = '';
       const wasResch = m && m.status === 'resch';
       if (isNew) g.meets.push(d); else Object.assign(m, d);
