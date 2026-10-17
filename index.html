@@ -13,7 +13,7 @@
   --bg:#0C0D11;--s1:#15161C;--s2:#1D1F27;--s3:#282A34;--line:rgba(255,255,255,.07);
   --tx:#F4F4F7;--tx2:#9C9EAB;--tx3:#5E606D;--acc:#FF5C8A;--ok:#38D996;--warn:#FFB547;--bad:#FF5C5C;--plan:#6C7BFF;
   --glass:rgba(21,22,28,.82);--shadow:0 10px 40px rgba(0,0,0,.45);
-  --st:var(--tg-content-safe-area-inset-top,0px);--sb:max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px));
+  --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px);
 }
 [data-theme=light]{
   --bg:#F2F2F6;--s1:#FFFFFF;--s2:#F2F2F7;--s3:#E4E5EC;--line:rgba(0,0,0,.07);
@@ -85,6 +85,7 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .mt b{font-size:20px;font-weight:800;display:block}
 .mt span{font-size:11px;color:var(--tx2);font-weight:600}
 .mt small{font-size:11px;color:var(--tx3);font-weight:600;display:block;margin-top:2px}
+#view > .mini .mt{background:var(--s1);border:1px solid var(--line)}
 .mt .q{position:absolute;top:8px;right:8px;width:16px;height:16px;font-size:10px}
 
 .search{display:flex;align-items:center;gap:8px;height:42px;padding:0 14px;background:var(--s1);border:1px solid var(--line);border-radius:14px;margin-bottom:10px}
@@ -136,7 +137,7 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 /* page */
 #page{position:fixed;inset:0;background:var(--bg);z-index:20;overflow-y:auto;transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);padding-bottom:calc(30px + var(--sb))}
 #page.open{transform:none}
-.hero{position:relative;height:300px;overflow:hidden}
+.hero{position:relative;height:calc(300px + var(--st));overflow:hidden}
 .hero .bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 .hero .bgini{position:absolute;inset:0;display:grid;place-items:center;font-size:96px;font-weight:800;color:rgba(255,255,255,.9)}
 .hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 45%,rgba(0,0,0,.75) 100%);pointer-events:none}
@@ -987,6 +988,18 @@ function makeDemo() {
 }
 
 /* ============ boot ============ */
+function applyInsets() {
+  const r = document.documentElement.style;
+  let saT = 0, caT = 0, saB = 0, caB = 0;
+  if (tg) {
+    const sa = tg.safeAreaInset || {}, ca = tg.contentSafeAreaInset || {};
+    saT = sa.top || 0; caT = ca.top || 0; saB = sa.bottom || 0; caB = ca.bottom || 0;
+    // fullscreen without reported content inset: leave room for Telegram's own buttons
+    if (tg.isFullscreen && !caT) caT = 48;
+  }
+  r.setProperty('--st', `calc(max(env(safe-area-inset-top,0px), ${saT}px) + ${caT}px)`);
+  r.setProperty('--sb', `max(env(safe-area-inset-bottom,0px), ${saB + caB}px)`);
+}
 function applyTheme() {
   const dark = tg ? tg.colorScheme !== 'light' : !matchMedia('(prefers-color-scheme: light)').matches;
   document.documentElement.dataset.theme = dark ? 'dark' : 'light';
@@ -994,7 +1007,8 @@ function applyTheme() {
   try { if (ver('6.1')) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); } if (ver('7.10')) tg.setBottomBarColor(bg); } catch (e) {}
 }
 (async function boot() {
-  if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); }
+  if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged'].forEach(ev => tg.onEvent(ev, applyInsets)); }
+  applyInsets();
   applyTheme();
   render();
   await idb.open();
