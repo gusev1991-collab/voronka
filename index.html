@@ -189,6 +189,14 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .step:not(.on) .sl{color:var(--tx3)}
 .step .sl small{display:block;font-size:11px;font-weight:600;color:var(--tx3)}
 .step input[type=date]{width:auto;font-size:13px;font-weight:700;color:var(--tx2);background:var(--s2);border-radius:10px;padding:6px 8px;height:32px}
+.dwrap{position:relative;display:inline-flex;align-items:center;flex:none}
+.dwrap.fw{display:flex}
+.dwrap.nodate input{color:transparent!important}
+.dwrap.nodate input::-webkit-datetime-edit{color:transparent}
+.dwrap.nodate:after{content:'без даты';position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--tx3);font-weight:700;font-size:13px;pointer-events:none}
+.dwrap.fw.nodate:after{left:0;font-size:16px;font-weight:600}
+.step .dwrap input{width:132px}
+.nod{margin-left:auto;font-size:11px;font-weight:700;color:var(--plan);text-transform:none;letter-spacing:0;padding:0}
 .step .plus{width:32px;height:32px;border-radius:10px;background:var(--s2);display:grid;place-items:center;color:var(--tx3)}
 .step .plus svg{width:16px;height:16px}
 .step:before{content:"";position:absolute;left:14px;top:-8px;height:16px;width:2px;background:var(--s3)}
@@ -283,7 +291,9 @@ const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.get
 const dDiff = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
 const MON = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
 const WD = ['вс','пн','вт','ср','чт','пт','сб'];
-const fmt = s => { if (!s) return ''; const [y,m,d] = s.split('-'); return `${+d} ${MON[m-1]}${+y !== new Date().getFullYear() ? ' ’' + y.slice(2) : ''}`; };
+const NODATE = '?';
+const isD = s => !!s && s !== NODATE;
+const fmt = s => { if (!s) return ''; if (s === NODATE) return 'без даты'; const [y,m,d] = s.split('-'); return `${+d} ${MON[m-1]}${+y !== new Date().getFullYear() ? ' ’' + y.slice(2) : ''}`; };
 const pct = (a, b) => b ? Math.round(a / b * 100) : null;
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const hap = (t = 'light') => { try { tg && tg.HapticFeedback.impactOccurred(t); } catch (e) {} };
@@ -339,11 +349,11 @@ const HINTS = {
   sex: 'Секс может случиться уже на первой встрече, поэтому этот этап считается от «Встречи», а не от «2-го свидания».',
   skip: 'Секс случился до второго свидания — этап пропущен, это нормально.',
   firstdate: 'Сколько раз секс был уже на первой встрече, без второго свидания.',
-  kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События).',
+  kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События). Этапы без даты учитываются только в периоде «Всё время».',
   kpi_meet: 'Какая доля от всех, кому написал, дошла до встречи.',
   kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
   pipe: 'Кто сейчас в работе (без сливов) и на каком этапе. Нажми, чтобы открыть список.',
-  stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять. Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
+  stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять или стереть («Сбросить» в календаре), если не помнишь — этап останется отмеченным «без даты». Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
   meets: 'Здесь все встречи: запланированные, прошедшие, перенесённые и отменённые. Добавляй их через «+ Встреча».\n\nЭтапы и встречи связаны: отметишь этап «Встреча» или «2-е свидание» — встреча появится здесь сама, и наоборот.\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
   lost: 'Слив — общение остановилось. Отметь причину: во вкладке «Причины» будет видно, где ты теряешь чаще всего.',
   who: 'Кто инициировал перенос или отмену.',
@@ -417,7 +427,7 @@ function cloudLoad() {
 const cur = g => { for (let k = 7; k >= 1; k--) if (g.st[k]) return k; return 0; };
 const nextStage = g => { const c = cur(g); return c >= 7 ? 0 : c === 5 ? 6 : c + 1; };
 const status = g => g.lost ? 'lost' : g.st[7] ? 'done' : 'active';
-const lastDate = g => [...Object.values(g.st), ...g.meets.map(m => m.date), g.lost && g.lost.date].filter(Boolean).sort().pop() || '';
+const lastDate = g => [...Object.values(g.st), ...g.meets.map(m => m.date), g.lost && g.lost.date].filter(isD).sort().pop() || '';
 const busyState = g => !g.busy || g.lost || g.st[7] ? '' : !g.busy.until || g.busy.until >= today() ? 'busy' : 'due';
 function ensureNums(renumber) {
   if (renumber) DB.girls.forEach(g => delete g.num);
@@ -430,6 +440,7 @@ function syncStageMeets(g) {
   let ch = false;
   for (const k of [5, 6]) {
     const m = g.meets.find(x => x.stage === k);
+    if (g.st[k] === NODATE) continue;
     if (g.st[k]) {
       if (!m) {
         const c = g.meets.find(x => x.status === 'done' && !x.stage && x.date === g.st[k]);
@@ -487,7 +498,7 @@ function range() {
     default: return ['0000-01-01', '9999-12-31'];
   }
 }
-const inR = (d, r) => !!d && d >= r[0] && d <= r[1];
+const inR = (d, r) => d === NODATE ? r[0] === '0000-01-01' && r[1] === '9999-12-31' : !!d && d >= r[0] && d <= r[1];
 function periodLabel() {
   if (P.preset === 'custom') { return (P.from ? fmt(P.from) : '…') + ' – ' + (P.to ? fmt(P.to) : '…'); }
   return (PRESETS.find(p => p[0] === P.preset) || PRESETS[1])[1];
@@ -698,13 +709,13 @@ function renderList(v) {
 function cardHTML(g) {
   const c = cur(g), st = status(g), nx = nextStage(g);
   const prog = STAGES.map(s => `<i style="${g.st[s.k] ? 'background:' + s.c : ''}"></i>`).join('');
-  const days = lastDate(g) ? dDiff(lastDate(g), today()) : 0;
+  const days = lastDate(g) ? dDiff(lastDate(g), today()) : -1;
   const bs = busyState(g);
   const sub = st === 'lost' ? `слив · ${esc(g.lost.reason || LOSS_T[g.lost.stage])}`
     : bs === 'busy' ? `⏸ ${g.busy.until ? 'занята до ' + fmt(g.busy.until) : 'занята, без срока'}${busyTxt(g) ? ' · ' + esc(busyTxt(g)) : ''}`
     : bs === 'due' ? '⏰ пора написать'
     : ballOf(g) ? [ballOf(g) === 'me' ? '<span class="tm">Твой ход</span>' : '<span class="th">Ждёшь её</span>', g.ballAt && dDiff(g.ballAt, today()) > 0 ? dDiff(g.ballAt, today()) + ' дн.' : 'сегодня', g.loc && esc(g.loc)].filter(Boolean).join(' · ')
-    : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : 'сегодня'].filter(Boolean).join(' · ');
+    : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : days === 0 ? 'сегодня' : ''].filter(Boolean).join(' · ');
   let right = '';
   if (st === 'active' && nx) right = `<button class="adv" data-adv="${g.id}" style="color:${S(nx).c}">${IC.arrow}${S(nx).n}</button>`;
   else if (st === 'done') right = `<span class="badge" style="background:rgba(255,147,70,.15);color:#FF9346">🔥</span>`;
@@ -746,7 +757,7 @@ function renderWhy(v) {
   const who = (arr) => { const me = arr.filter(m => m.who === 'me').length, her = arr.filter(m => m.who === 'her').length; return `она ${her} · я ${me}`; };
 
   const pairs = [[1,2,'Написал → ответила'],[2,3,'Ответила → позвал'],[3,5,'Позвал → встреча'],[5,6,'Встреча → 2-е'],[1,5,'Написал → встреча']];
-  const spd = pairs.map(([a, b, n]) => { const m = median(pool.filter(g => g.st[a] && g.st[b]).map(g => Math.max(0, dDiff(g.st[a], g.st[b])))); return `<div class="sr"><span>${n}</span><span class="sp"></span><b class="num">${m === null ? '—' : (Math.round(m * 10) / 10) + ' дн.'}</b></div>`; }).join('');
+  const spd = pairs.map(([a, b, n]) => { const m = median(pool.filter(g => isD(g.st[a]) && isD(g.st[b])).map(g => Math.max(0, dDiff(g.st[a], g.st[b])))); return `<div class="sr"><span>${n}</span><span class="sp"></span><b class="num">${m === null ? '—' : (Math.round(m * 10) / 10) + ' дн.'}</b></div>`; }).join('');
 
   v.innerHTML = `
     <div class="card"><div class="ct">Где теряю <span class="num" style="color:var(--tx)">${lostSet.length}</span><span class="sp"></span>${q('losses')}</div>${lossHTML}</div>
@@ -782,7 +793,7 @@ function drawGirl() {
     return `<div class="step ${on ? 'on' : ''} ${skip ? 'skip' : ''}" data-k="${s.k}" style="--lc:${s.c}">
       <button class="sd" data-tog="${s.k}" style="${on ? `background:${s.c};border-color:${s.c}` : ''}">${IC.check}</button>
       <div class="sl">${s.n}${skip ? '<small>пропущено</small>' : ''}</div>
-      ${skip ? q('skip') : on ? `<input type="date" data-date="${s.k}" value="${g.st[s.k]}">` : `<span class="plus">${IC.plus}</span>`}
+      ${skip ? q('skip') : on ? `<span class="dwrap ${isD(g.st[s.k]) ? '' : 'nodate'}"><input type="date" data-date="${s.k}" value="${isD(g.st[s.k]) ? g.st[s.k] : ''}"></span>` : `<span class="plus">${IC.plus}</span>`}
     </div>`;
   }).join('');
   const meets = [...g.meets].sort((a, b) => a.date < b.date ? 1 : -1).map(m => {
@@ -842,7 +853,8 @@ function drawGirl() {
       setStage(g, k, today()); save(); hapN('success'); drawGirl();
     }
   });
-  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { if (inp.value) { g.st[+inp.dataset.date] = inp.value; g.upd = Date.now(); save(); } });
+  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { g.st[+inp.dataset.date] = inp.value || NODATE; inp.parentNode.classList.toggle('nodate', !inp.value); g.upd = Date.now(); save(); });
+  $$('.dwrap', page).forEach(w => w.onclick = e => e.stopPropagation());
   $('#pAddM').onclick = () => meetSheet(g);
   $$('.mrow', page).forEach(r => r.onclick = () => meetSheet(g, g.meets.find(m => m.id === r.dataset.m)));
   const lb = $('#pLost'); if (lb) lb.onclick = () => lostSheet(g);
@@ -892,17 +904,20 @@ function addSheet() {
     <div class="fld"><label>Имя</label><input id="aName" placeholder="Как её зовут" autocomplete="off"></div>
     <div class="fld"><label>Где познакомились</label><input id="aLoc" list="alocs" placeholder="Tinder, кофейня в Чангу…" autocomplete="off"><datalist id="alocs">${locs.map(l => `<option value="${esc(l)}">`).join('')}</datalist></div>
     <div class="row2">
-      <div class="fld"><label>Написал</label><input type="date" id="aDate" value="${today()}"></div>
+      <div class="fld"><label>Написал <button class="nod" id="aNoD">не помню</button></label><span class="dwrap fw"><input type="date" id="aDate" value="${today()}"></span></div>
       <div class="fld"><label>Уже на этапе</label><select id="aSt" style="width:100%;background:none;border:0;color:var(--tx);font:inherit;font-size:16px;font-weight:600;outline:0">${STAGES.map(s => `<option value="${s.k}">${s.n}</option>`).join('')}</select></div>
     </div>
     <div class="fld"><label>Заметка</label><textarea class="auto" id="aNote" rows="1" placeholder="Необязательно"></textarea></div>
     <button class="btn pri full" id="aSave">Добавить</button>`, (sh, close) => {
+    const aD = $('#aDate', sh), syncD = () => aD.parentNode.classList.toggle('nodate', !aD.value);
+    aD.onchange = syncD; aD.oninput = syncD;
+    $('#aNoD', sh).onclick = () => { aD.value = ''; syncD(); hap('soft'); };
     $('#aPh', sh).onclick = () => pickPhoto(d => { photo = d; $('#aPh', sh).innerHTML = `<img src="${d}">`; });
     setTimeout(() => $('#aName', sh).focus(), 350);
     $('#aSave', sh).onclick = () => {
       const name = $('#aName', sh).value.trim();
       if (!name) { $('#aName', sh).focus(); hapN('error'); return; }
-      const date = $('#aDate', sh).value || today();
+      const date = $('#aDate', sh).value || NODATE;
       const g = newGirl({name, loc: $('#aLoc', sh).value.trim(), note: $('#aNote', sh).value.trim(), date});
       const k = +$('#aSt', sh).value; if (k > 1) setStage(g, k, date);
       g.num = Math.max(0, ...DB.girls.map(x => x.num || 0)) + 1;
