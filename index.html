@@ -346,14 +346,14 @@ const MST = {
 };
 const HINTS = {
   mode: 'Когорта — девушки, которым ты написал в выбранный период. Смотрим, докуда они дошли, даже если это случилось позже. Честная конверсия.\n\nСобытия — всё, что произошло внутри периода: ответы, встречи и т.д. Показывает активность; конверсия тут приблизительная.',
-  fcols: 'Справа: крупно — переход с предыдущего этапа, мелко — доля от всех, кому написал.',
+  fcols: 'Справа: крупно — переход с предыдущего этапа, мелко — доля от всех, кому написал.\n\nНажми на этап — откроется список тех, кто до него дошёл за этот период (включая тех, кто пошёл дальше или слился позже).',
   sex: 'Секс может случиться уже на первой встрече, поэтому этот этап считается от «Встречи», а не от «2-го свидания».',
   skip: 'Секс случился до второго свидания — этап пропущен, это нормально.',
   firstdate: 'Сколько раз секс был уже на первой встрече, без второго свидания.',
   kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События). Этапы без даты учитываются только в периоде «Всё время».',
   kpi_meet: 'Какая доля от всех, кому написал, дошла до встречи.',
   kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
-  pipe: 'Кто сейчас в работе (без сливов) и на каком этапе. Нажми, чтобы открыть список.',
+  pipe: 'Кто сейчас в работе (без сливов) и на каком этапе остановился — за всё время, без учёта периода. Нажми, чтобы открыть список.',
   stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять или убрать крестиком ✕ рядом с ней, если не помнишь — этап останется отмеченным «без даты». Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
   meets: 'Здесь все встречи: запланированные, прошедшие, перенесённые и отменённые. Добавляй их через «+ Встреча».\n\nЭтапы и встречи связаны: отметишь этап «Встреча» или «2-е свидание» — встреча появится здесь сама, и наоборот.\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
   lost: 'Слив — общение остановилось. Отметь причину: во вкладке «Причины» будет видно, где ты теряешь чаще всего.',
@@ -596,8 +596,8 @@ function openSheet(html, mount) {
 
 /* ============ tabs / render ============ */
 let TAB = 'funnel';
-const LF = {status: 'active', stage: 0, q: '', period: false};
-$$('.tab').forEach(b => b.onclick = () => { TAB = b.dataset.tab; hap('soft'); render(); $('#view').scrollTop = 0; });
+const LF = {status: 'active', stage: 0, q: '', period: false, reach: null};
+$$('.tab').forEach(b => b.onclick = () => { if (b.dataset.tab === 'list' && TAB !== 'list') { LF.reach = null; LF.stage = 0; } TAB = b.dataset.tab; hap('soft'); render(); $('#view').scrollTop = 0; });
 $('#fab').onclick = () => { hap(); addSheet(); };
 $('#periodBtn').onclick = () => { hap('soft'); periodSheet(); };
 $('#setBtn').onclick = () => { hap('soft'); settingsSheet(); };
@@ -673,7 +673,11 @@ function renderFunnel(v) {
   `;
   $$('[data-turn]').forEach(el => el.onclick = () => { LF.status = el.dataset.turn; LF.stage = 0; LF.period = false; TAB = 'list'; hap('soft'); render(); });
   $$('#mode button[data-m]').forEach(b => b.onclick = () => { P.mode = b.dataset.m; savePrefs(); hap('soft'); render(); });
-  $$('.fr').forEach(el => el.onclick = () => { LF.stage = +el.dataset.k; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
+  $$('.fr').forEach(el => el.onclick = () => {
+    const k = +el.dataset.k;
+    const ids = (P.mode === 'cohort' ? pool.filter(g => g.st[k]) : DB.girls.filter(g => inR(g.st[k], r))).map(g => g.id);
+    LF.reach = {k, ids, label: periodLabel()}; LF.stage = 0; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render();
+  });
   $$('[data-pk]').forEach(el => el.onclick = () => { LF.stage = +el.dataset.pk; LF.status = 'active'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
 }
 
@@ -685,6 +689,7 @@ function renderList(v) {
   else if (LF.status === 'me' || LF.status === 'her') list = list.filter(g => ballOf(g) === LF.status);
   else if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
   if (LF.stage) list = list.filter(g => cur(g) === LF.stage);
+  if (LF.reach) list = list.filter(g => LF.reach.ids.includes(g.id));
   if (LF.period) list = list.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)));
   if (LF.q) { const s = LF.q.toLowerCase().trim(), n = /^[#№]?\d+$/.test(s) ? +s.replace(/\D/g, '') : 0; list = list.filter(g => n ? g.num === n : (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
   list.sort((a, b) => (busyState(b) === 'due') - (busyState(a) === 'due') || (ballOf(b) === 'me') - (ballOf(a) === 'me') || (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
@@ -694,7 +699,8 @@ function renderList(v) {
   v.innerHTML = `
     <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка или №" value="${esc(LF.q)}"></div>
     <div class="chips">
-      ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
+      ${LF.reach ? `<button class="chip on" id="rx" style="background:${S(LF.reach.k).c};color:#fff">Дошли до «${S(LF.reach.k).n}» · ${esc(LF.reach.label)}<span class="x">✕</span></button>` : ''}
+      ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">Сейчас: ${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
       ${chip('active', 'В работе')}${cnt('me') ? chip('me', 'Мой ход') : ''}${cnt('her') ? chip('her', 'Жду её') : ''}${cnt('pause') ? chip('pause', '⏸ Пауза') : ''}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
       <button class="chip ${LF.period ? 'on' : ''}" id="lp">За период</button>
     </div>
@@ -703,6 +709,7 @@ function renderList(v) {
   qs.oninput = () => { LF.q = qs.value; const pos = qs.selectionStart; renderList(v); const n = $('#qs'); n.focus(); n.setSelectionRange(pos, pos); };
   $$('.chip[data-s]').forEach(c => c.onclick = () => { LF.status = c.dataset.s; hap('soft'); renderList(v); });
   const stx = $('#stx'); if (stx) stx.onclick = () => { LF.stage = 0; renderList(v); };
+  const rx = $('#rx'); if (rx) rx.onclick = () => { LF.reach = null; renderList(v); };
   $('#lp').onclick = () => { LF.period = !LF.period; hap('soft'); renderList(v); };
   bindCards(v);
 }
