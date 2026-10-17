@@ -1,0 +1,1007 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<title>Воронка</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0C0D11;--s1:#15161C;--s2:#1D1F27;--s3:#282A34;--line:rgba(255,255,255,.07);
+  --tx:#F4F4F7;--tx2:#9C9EAB;--tx3:#5E606D;--acc:#FF5C8A;--ok:#38D996;--warn:#FFB547;--bad:#FF5C5C;--plan:#6C7BFF;
+  --glass:rgba(21,22,28,.82);--shadow:0 10px 40px rgba(0,0,0,.45);
+  --st:var(--tg-content-safe-area-inset-top,0px);--sb:max(env(safe-area-inset-bottom),var(--tg-content-safe-area-inset-bottom,0px));
+}
+[data-theme=light]{
+  --bg:#F2F2F6;--s1:#FFFFFF;--s2:#F2F2F7;--s3:#E4E5EC;--line:rgba(0,0,0,.07);
+  --tx:#14151A;--tx2:#6A6D7A;--tx3:#A6A8B3;--glass:rgba(255,255,255,.85);--shadow:0 10px 40px rgba(20,20,40,.12);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--tx);font-family:Manrope,-apple-system,system-ui,sans-serif;font-size:15px;height:100%;overflow:hidden;overscroll-behavior:none}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:var(--tx);background:none;border:0;outline:0;width:100%}
+input::placeholder,textarea::placeholder{color:var(--tx3)}
+.num{font-variant-numeric:tabular-nums}
+
+#app{position:fixed;inset:0;display:flex;flex-direction:column;padding-top:var(--st)}
+.top{display:flex;align-items:center;gap:8px;padding:14px 16px 10px}
+.top h1{font-size:24px;font-weight:800;letter-spacing:-.02em;flex:1}
+.pill{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:17px;background:var(--s2);font-weight:600;font-size:13px;white-space:nowrap}
+.pill svg{width:14px;height:14px;opacity:.7}
+.ibtn{width:34px;height:34px;border-radius:17px;background:var(--s2);display:grid;place-items:center}
+.ibtn svg{width:18px;height:18px}
+#view{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 16px calc(110px + var(--sb));-webkit-overflow-scrolling:touch}
+
+.tabs{position:fixed;left:12px;right:12px;bottom:calc(10px + var(--sb));height:62px;display:flex;background:var(--glass);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);z-index:5}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:600;color:var(--tx3);transition:color .2s}
+.tab svg{width:22px;height:22px}
+.tab.on{color:var(--tx)}
+.tab.on svg{color:var(--acc)}
+#fab{position:fixed;right:20px;bottom:calc(84px + var(--sb));width:56px;height:56px;border-radius:20px;background:linear-gradient(135deg,#FF5C8A,#FF9346);color:#fff;display:grid;place-items:center;box-shadow:0 10px 30px rgba(255,92,138,.45);z-index:6;transition:transform .2s}
+#fab:active{transform:scale(.92)}
+#fab svg{width:26px;height:26px}
+
+.card{background:var(--s1);border-radius:22px;padding:16px;margin-bottom:12px;border:1px solid var(--line)}
+.ct{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--tx2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px}
+.ct .sp{flex:1}
+.q{width:18px;height:18px;border-radius:9px;background:var(--s3);color:var(--tx2);font-size:11px;font-weight:800;display:inline-grid;place-items:center;flex:none;text-transform:none;letter-spacing:0}
+
+.seg{display:flex;background:var(--s2);border-radius:14px;padding:3px;gap:3px}
+.seg button{flex:1;height:34px;border-radius:11px;font-weight:600;font-size:13px;color:var(--tx2);transition:all .2s}
+.seg button.on{background:var(--s1);color:var(--tx);box-shadow:0 2px 8px rgba(0,0,0,.15)}
+[data-theme=dark] .seg button.on{background:var(--s3)}
+
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:12px 0}
+.kpi{background:var(--s1);border:1px solid var(--line);border-radius:18px;padding:12px 12px 10px;position:relative}
+.kpi b{display:block;font-size:24px;font-weight:800;letter-spacing:-.02em}
+.kpi span{font-size:11px;color:var(--tx2);font-weight:600}
+.kpi .q{position:absolute;top:8px;right:8px;width:16px;height:16px;font-size:10px}
+
+.fr{display:grid;grid-template-columns:92px 1fr 50px;align-items:center;gap:8px;padding:5px 0}
+.fr-l{font-size:13px;font-weight:600;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.dot{width:8px;height:8px;border-radius:4px;flex:none}
+.fr-bar{height:34px;display:flex;justify-content:center;align-items:center;position:relative}
+.fr-fill{height:100%;border-radius:10px;min-width:30px;display:grid;place-items:center;transition:width .6s cubic-bezier(.2,.8,.2,1);color:#fff;font-weight:800;font-size:14px}
+.fr-c{text-align:right;line-height:1.15}
+.fr-c b{font-size:14px;font-weight:800;display:block}
+.fr-c small{font-size:11px;color:var(--tx3);font-weight:600}
+.fhead{display:grid;grid-template-columns:92px 1fr 50px;gap:8px;font-size:11px;color:var(--tx3);font-weight:600;margin-bottom:2px}
+.fhead div:last-child{text-align:right}
+
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;height:32px;padding:0 12px;border-radius:16px;background:var(--s2);font-size:13px;font-weight:600;color:var(--tx2);display:inline-flex;align-items:center;gap:6px;border:1px solid transparent}
+.chip.on{background:var(--tx);color:var(--bg)}
+.chip .x{opacity:.6;margin-left:2px}
+
+.pipe{display:flex;gap:6px;flex-wrap:wrap}
+.pp{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;border-radius:15px;background:var(--s2);font-size:12px;font-weight:700}
+
+.mini{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mt{background:var(--s2);border-radius:14px;padding:10px 12px;position:relative}
+.mt b{font-size:20px;font-weight:800;display:block}
+.mt span{font-size:11px;color:var(--tx2);font-weight:600}
+.mt small{font-size:11px;color:var(--tx3);font-weight:600;display:block;margin-top:2px}
+.mt .q{position:absolute;top:8px;right:8px;width:16px;height:16px;font-size:10px}
+
+.search{display:flex;align-items:center;gap:8px;height:42px;padding:0 14px;background:var(--s1);border:1px solid var(--line);border-radius:14px;margin-bottom:10px}
+.search svg{width:18px;height:18px;color:var(--tx3);flex:none}
+
+.g{display:flex;align-items:center;gap:12px;padding:12px;background:var(--s1);border:1px solid var(--line);border-radius:20px;margin-bottom:8px;transition:transform .15s;animation:fin .3s ease both}
+.g:active{transform:scale(.985)}
+.g.lost{opacity:.55}
+@keyframes fin{from{opacity:0;transform:translateY(6px)}}
+.av{width:50px;height:50px;border-radius:16px;flex:none;object-fit:cover;display:grid;place-items:center;font-weight:800;font-size:18px;color:#fff;overflow:hidden}
+.av img{width:100%;height:100%;object-fit:cover}
+.g-m{flex:1;min-width:0}
+.g-n{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-s{font-size:12px;color:var(--tx2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.prog{display:flex;gap:3px;margin-top:7px}
+.prog i{height:4px;flex:1;border-radius:2px;background:var(--s3)}
+.adv{flex:none;height:36px;padding:0 10px;border-radius:12px;background:var(--s2);font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;white-space:nowrap}
+.adv svg{width:14px;height:14px}
+.badge{flex:none;font-size:11px;font-weight:700;padding:5px 8px;border-radius:10px}
+
+.empty{text-align:center;padding:50px 20px 20px}
+.empty svg{width:96px;height:96px;margin-bottom:14px}
+.empty h3{font-size:20px;font-weight:800;margin-bottom:6px}
+.empty p{color:var(--tx2);font-size:14px;margin-bottom:20px}
+.btn{height:50px;border-radius:16px;padding:0 20px;font-weight:700;font-size:15px;display:inline-flex;align-items:center;justify-content:center;gap:8px;background:var(--s2)}
+.btn.pri{background:linear-gradient(135deg,#FF5C8A,#FF9346);color:#fff}
+.btn.full{width:100%}
+.btn.ghost{background:transparent;color:var(--tx2)}
+.btn.danger{color:var(--bad)}
+.btn:active{opacity:.8}
+.btn svg{width:20px;height:20px;flex:none}
+
+/* reasons */
+.lr{margin-bottom:14px}
+.lr:last-child{margin-bottom:0}
+.lr-h{display:flex;align-items:center;gap:8px;font-weight:700;font-size:14px;margin-bottom:8px}
+.lr-h .sp{flex:1}
+.rb{display:grid;grid-template-columns:1fr 28px;gap:8px;align-items:center;margin:5px 0}
+.rb-t{position:relative;height:30px;border-radius:9px;background:var(--s2);overflow:hidden;display:flex;align-items:center;padding:0 10px;font-size:13px;font-weight:600}
+.rb-t i{position:absolute;left:0;top:0;bottom:0;opacity:.28;border-radius:9px}
+.rb-t span{position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rb b{text-align:right;font-size:13px}
+.sr{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;font-weight:600;gap:8px}
+.sr:last-child{border:0}
+.sr .sp{flex:1}
+.sr b{font-weight:800}
+.arrow{color:var(--tx3);font-size:12px}
+
+/* page */
+#page{position:fixed;inset:0;background:var(--bg);z-index:20;overflow-y:auto;transform:translateX(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);padding-bottom:calc(30px + var(--sb))}
+#page.open{transform:none}
+.hero{position:relative;height:300px;overflow:hidden}
+.hero .bgimg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.hero .bgini{position:absolute;inset:0;display:grid;place-items:center;font-size:96px;font-weight:800;color:rgba(255,255,255,.9)}
+.hero:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.35) 0%,rgba(0,0,0,0) 30%,rgba(0,0,0,0) 45%,rgba(0,0,0,.75) 100%);pointer-events:none}
+.hero-top{position:absolute;top:calc(12px + var(--st));left:12px;right:12px;display:flex;justify-content:space-between;z-index:2}
+.hbtn{width:40px;height:40px;border-radius:20px;background:rgba(0,0,0,.35);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);color:#fff;display:grid;place-items:center}
+.hbtn svg{width:20px;height:20px}
+.hero-b{position:absolute;left:16px;right:16px;bottom:14px;z-index:2;color:#fff}
+.hero-b input{color:#fff}
+.h-name{font-size:30px;font-weight:800;letter-spacing:-.02em;padding:0}
+.h-name::placeholder{color:rgba(255,255,255,.5)}
+.h-loc{display:flex;align-items:center;gap:6px;opacity:.9;font-weight:600;font-size:14px;margin-top:2px}
+.h-loc svg{width:16px;height:16px;flex:none}
+.h-loc input::placeholder{color:rgba(255,255,255,.55)}
+.pad{padding:14px 16px 0}
+.lostbar{display:flex;align-items:center;gap:10px;background:rgba(255,92,92,.12);color:var(--bad);border-radius:16px;padding:12px 14px;font-weight:700;font-size:14px;margin-bottom:12px}
+.lostbar .sp{flex:1}
+.lostbar small{display:block;font-weight:600;opacity:.8;font-size:12px;margin-top:1px}
+
+.steps{position:relative}
+.step{display:flex;align-items:center;gap:12px;padding:8px 0;position:relative}
+.step .sd{width:30px;height:30px;border-radius:15px;border:2px solid var(--s3);display:grid;place-items:center;flex:none;position:relative;z-index:1;background:var(--s1);transition:all .2s}
+.step .sd svg{width:16px;height:16px;color:#fff;opacity:0}
+.step.on .sd svg{opacity:1}
+.step .sl{flex:1;font-weight:700;font-size:15px}
+.step:not(.on) .sl{color:var(--tx3)}
+.step .sl small{display:block;font-size:11px;font-weight:600;color:var(--tx3)}
+.step input[type=date]{width:auto;font-size:13px;font-weight:700;color:var(--tx2);background:var(--s2);border-radius:10px;padding:6px 8px;height:32px}
+.step .plus{width:32px;height:32px;border-radius:10px;background:var(--s2);display:grid;place-items:center;color:var(--tx3)}
+.step .plus svg{width:16px;height:16px}
+.step:before{content:"";position:absolute;left:14px;top:-8px;height:16px;width:2px;background:var(--s3)}
+.step:first-child:before{display:none}
+.step.on:before{background:var(--lc)}
+.step.skip .sd{border-style:dashed}
+
+.mrow{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)}
+.mrow:last-child{border:0}
+.mdate{width:46px;text-align:center;flex:none}
+.mdate b{display:block;font-size:20px;font-weight:800;line-height:1}
+.mdate span{font-size:11px;color:var(--tx2);font-weight:700;text-transform:uppercase}
+.mm{flex:1;min-width:0}
+.mm .ms{font-size:12px;color:var(--tx2);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;padding:4px 9px;border-radius:9px}
+.addm{height:30px;padding:0 10px;border-radius:10px;background:var(--s2);font-size:12px;font-weight:700;text-transform:none;letter-spacing:0;color:var(--tx);display:inline-flex;align-items:center;gap:4px}
+.note{width:100%;min-height:90px;resize:none;background:var(--s2);border-radius:14px;padding:12px;line-height:1.45}
+.acts{display:flex;gap:8px;margin-top:4px}
+.acts .btn{flex:1}
+
+/* sheet */
+.bd{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;opacity:0;transition:opacity .25s}
+.bd.open{opacity:1}
+.sheet{position:fixed;left:0;right:0;bottom:0;background:var(--s1);border-radius:26px 26px 0 0;z-index:41;padding:8px 16px calc(18px + var(--sb));transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.8,.2,1);max-height:88vh;overflow-y:auto}
+.sheet.open{transform:none}
+.grab{width:38px;height:5px;border-radius:3px;background:var(--s3);margin:0 auto 14px}
+.sheet h2{font-size:20px;font-weight:800;margin-bottom:14px;display:flex;align-items:center;gap:8px}
+.sheet h2 small{font-size:13px;color:var(--tx2);font-weight:600}
+.fld{background:var(--s2);border-radius:14px;padding:10px 14px;margin-bottom:10px}
+.fld label{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px}
+.fld input,.fld textarea{font-size:16px;font-weight:600}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.photo-pick{width:88px;height:88px;border-radius:28px;background:var(--s2);margin:0 auto 14px;display:grid;place-items:center;color:var(--tx3);overflow:hidden;border:2px dashed var(--s3)}
+.photo-pick img{width:100%;height:100%;object-fit:cover}
+.photo-pick svg{width:28px;height:28px}
+.rgrid{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.rc{height:38px;padding:0 14px;border-radius:12px;background:var(--s2);font-weight:600;font-size:14px;border:2px solid transparent}
+.rc.on{border-color:var(--acc);background:rgba(255,92,138,.12)}
+.slbl{font-size:12px;font-weight:700;color:var(--tx3);text-transform:uppercase;letter-spacing:.05em;margin:4px 0 8px;display:flex;align-items:center;gap:6px}
+.sbtns{display:flex;gap:8px;margin-top:6px}
+.sbtns .btn{flex:1}
+.list-btn{display:flex;align-items:center;gap:12px;width:100%;padding:14px;border-radius:14px;background:var(--s2);margin-bottom:8px;font-weight:700;text-align:left}
+.list-btn svg{width:20px;height:20px;flex:none;color:var(--tx2)}
+.list-btn small{display:block;font-weight:600;font-size:12px;color:var(--tx3)}
+.list-btn.danger{color:var(--bad)}
+.list-btn.danger svg{color:var(--bad)}
+
+#toast{position:fixed;left:16px;right:16px;top:calc(14px + var(--st));z-index:60;display:flex;justify-content:center;pointer-events:none}
+#toast .t{background:var(--tx);color:var(--bg);border-radius:14px;padding:12px 14px;font-weight:700;font-size:14px;display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);pointer-events:auto;animation:tin .25s ease}
+#toast .t button{color:var(--acc);font-weight:800}
+@keyframes tin{from{opacity:0;transform:translateY(-10px)}}
+
+.hint{position:fixed;z-index:80;max-width:280px;background:var(--tx);color:var(--bg);font-size:13px;line-height:1.45;font-weight:600;padding:12px 14px;border-radius:14px;box-shadow:var(--shadow);opacity:0;pointer-events:none;transform:translateY(4px);transition:opacity .15s,transform .15s;white-space:pre-line}
+.hint.show{opacity:1;transform:none;pointer-events:auto}
+.sub{font-size:12px;color:var(--tx3);font-weight:600;text-align:center;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <h1 id="title">Воронка</h1>
+    <button class="pill" id="periodBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span id="periodLbl">30 дней</span></button>
+    <button class="ibtn" id="setBtn" aria-label="Настройки"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg></button>
+  </header>
+  <main id="view"></main>
+  <button id="fab" aria-label="Добавить"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <nav class="tabs">
+    <button class="tab on" data-tab="funnel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 4h18l-7 8.5V19l-4 2v-8.5z"/></svg>Воронка</button>
+    <button class="tab" data-tab="list"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21c0-3.9 3.1-7 7-7s7 3.1 7 7M16 4a4 4 0 0 1 0 8M19 14.5c1.8 1.1 3 3.3 3 6.5"/></svg>Девушки</button>
+    <button class="tab" data-tab="why"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Причины</button>
+  </nav>
+</div>
+<div id="page"></div>
+<div id="sheets"></div>
+<div id="toast"></div>
+<div id="hint" class="hint"></div>
+
+<script>
+/* ============ base ============ */
+const tg = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined ? window.Telegram.WebApp : null;
+const ver = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2, '0');
+const ds = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const today = () => ds(new Date());
+const addDays = (s, n) => { const d = new Date(s + 'T12:00:00'); d.setDate(d.getDate() + n); return ds(d); };
+const dDiff = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
+const MON = ['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'];
+const WD = ['вс','пн','вт','ср','чт','пт','сб'];
+const fmt = s => { if (!s) return ''; const [y,m,d] = s.split('-'); return `${+d} ${MON[m-1]}${+y !== new Date().getFullYear() ? ' ’' + y.slice(2) : ''}`; };
+const pct = (a, b) => b ? Math.round(a / b * 100) : null;
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const hap = (t = 'light') => { try { tg && tg.HapticFeedback.impactOccurred(t); } catch (e) {} };
+const hapN = t => { try { tg && tg.HapticFeedback.notificationOccurred(t); } catch (e) {} };
+const median = a => { if (!a.length) return null; const s = [...a].sort((x,y)=>x-y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2; };
+const plural = (n, a, b, c) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 10 || m100 >= 20) ? b : c; };
+
+const IC = {
+  check: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
+  plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  back: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  cam: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>',
+  pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg>',
+  arrow: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+  search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>',
+  dl: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>',
+  ul: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 20V9M7 14l5-5 5 5M5 4h14"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="12" height="12" rx="3"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+  spark: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2z"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9.5 4.3 4.3 0 0 0 7 18z"/></svg>',
+};
+
+/* ============ domain ============ */
+const STAGES = [
+  {k:1, n:'Написал',      c:'#6C7BFF'},
+  {k:2, n:'Ответила',     c:'#8B6BFF'},
+  {k:3, n:'Позвал',       c:'#AE63F2'},
+  {k:4, n:'Согласилась',  c:'#D35BD3'},
+  {k:5, n:'Встреча',      c:'#F2559D'},
+  {k:6, n:'2-е свидание', c:'#FF6670'},
+  {k:7, n:'Секс',         c:'#FF9346'},
+];
+const S = k => STAGES[k - 1];
+const LOSS_T = {2:'Не ответила', 3:'Не позвал', 4:'Отказ на встречу', 5:'Встреча не случилась', 6:'Нет 2-го свидания', 7:'Не дошло до секса'};
+const REASONS = {
+  2: ['Игнор','Прочитала и молчит','Слабое первое сообщение','Передумал писать'],
+  3: ['Диалог затух','Не решился позвать','Перестала отвечать','Пропал мой интерес'],
+  4: ['Отказ','«Потом», без даты','Есть парень','Далеко / неудобно','Перестала отвечать'],
+  5: ['Отменила она','Отменил я','Пропала перед встречей','Бесконечные переносы'],
+  6: ['Нет химии','Не понравилась мне','Не понравился ей','Не позвал снова','Отказ на второе'],
+  7: ['Не было эскалации','Не готова','Логистика / нет места','Не захотел сам','Пропала после'],
+};
+const MST = {
+  plan:   {n:'План',     c:'#6C7BFF'},
+  done:   {n:'Была',     c:'#38D996'},
+  resch:  {n:'Перенос',  c:'#FFB547'},
+  cancel: {n:'Отмена',   c:'#FF5C5C'},
+};
+const HINTS = {
+  mode: 'Когорта — девушки, которым ты написал в выбранный период. Смотрим, докуда они дошли, даже если это случилось позже. Честная конверсия.\n\nСобытия — всё, что произошло внутри периода: ответы, встречи и т.д. Показывает активность; конверсия тут приблизительная.',
+  fcols: 'Справа: крупно — переход с предыдущего этапа, мелко — доля от всех, кому написал.',
+  sex: 'Секс может случиться уже на первой встрече, поэтому этот этап считается от «Встречи», а не от «2-го свидания».',
+  skip: 'Секс случился до второго свидания — этап пропущен, это нормально.',
+  firstdate: 'Сколько раз секс был уже на первой встрече, без второго свидания.',
+  kpi_total: 'Девушек в выборке: кому написал за период (Когорта) или с кем было любое движение (События).',
+  kpi_meet: 'Какая доля от всех, кому написал, дошла до встречи.',
+  kpi_end: 'Какая доля от всех, кому написал, дошла до секса.',
+  pipe: 'Кто сейчас в работе (без сливов) и на каком этапе. Нажми, чтобы открыть список.',
+  stages: 'Нажми на этап, чтобы отметить его сегодняшней датой. Дату можно поменять. Предыдущие этапы отметятся сами.\n\nНажми на кружок отмеченного этапа, чтобы снять отметку.',
+  meets: 'Встреча со статусом «Была» сама отмечает этапы «Встреча» и «2-е свидание».\n\nПеренос — отметь, кто перенёс, и укажи новую дату: появится новая встреча в плане.',
+  lost: 'Слив — общение остановилось. Отметь причину: во вкладке «Причины» будет видно, где ты теряешь чаще всего.',
+  who: 'Кто инициировал перенос или отмену.',
+  canc: 'Доля перенесённых и отменённых от всех назначенных встреч за период.',
+  speed: 'Медиана — половина случаев быстрее, половина медленнее. Считается по выборке периода.',
+  losses: 'Сливы по этапу, на котором общение остановилось. Внутри — причины.',
+  storage: 'Всё хранится на этом устройстве. Текстовые данные дополнительно синхронизируются в облако Telegram (фото — нет). Делай экспорт для резервной копии.',
+  inperiod: 'Показывать только девушек, с которыми было движение в выбранный период.',
+};
+
+/* ============ storage ============ */
+const LS = 'vf_data_v1', LP = 'vf_prefs_v1';
+let DB = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {girls: [], savedAt: 0}; } catch (e) { return {girls: [], savedAt: 0}; } })();
+let P = Object.assign({preset:'m', from:'', to:'', mode:'cohort'}, (() => { try { return JSON.parse(localStorage.getItem(LP)) || {}; } catch (e) { return {}; } })());
+const savePrefs = () => { try { localStorage.setItem(LP, JSON.stringify(P)); } catch (e) {} };
+function save() {
+  DB.savedAt = Date.now();
+  try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (e) { toast('Не хватает памяти устройства'); }
+  cloudSave();
+}
+
+// Photos → IndexedDB (fallback: memory + localStorage)
+const PH = {};
+const idb = {
+  db: null,
+  open() { return new Promise(res => { try { const r = indexedDB.open('vf', 1); r.onupgradeneeded = () => r.result.createObjectStore('ph'); r.onsuccess = () => { this.db = r.result; res(true); }; r.onerror = () => res(false); } catch (e) { res(false); } }); },
+  put(k, v) { if (!this.db) { try { localStorage.setItem('vf_ph_' + k, v); } catch (e) {} return; } const t = this.db.transaction('ph', 'readwrite'); t.objectStore('ph').put(v, k); },
+  del(k) { if (!this.db) { localStorage.removeItem('vf_ph_' + k); return; } const t = this.db.transaction('ph', 'readwrite'); t.objectStore('ph').delete(k); },
+  all() { return new Promise(res => {
+    const out = {};
+    if (!this.db) { Object.keys(localStorage).filter(k => k.startsWith('vf_ph_')).forEach(k => out[k.slice(6)] = localStorage.getItem(k)); return res(out); }
+    const c = this.db.transaction('ph').objectStore('ph').openCursor();
+    c.onsuccess = () => { const cur = c.result; if (cur) { out[cur.key] = cur.value; cur.continue(); } else res(out); };
+    c.onerror = () => res(out);
+  }); },
+};
+const setPhoto = (id, v) => { if (v) { PH[id] = v; idb.put(id, v); } else { delete PH[id]; idb.del(id); } };
+
+// Telegram CloudStorage sync (text only)
+const CS = ver('6.9') && tg.CloudStorage ? tg.CloudStorage : null;
+let cloudT;
+function cloudSave() {
+  if (!CS) return;
+  clearTimeout(cloudT);
+  cloudT = setTimeout(() => {
+    const s = JSON.stringify(DB), n = Math.ceil(s.length / 3800) || 1;
+    const parts = Array.from({length: n}, (_, i) => s.slice(i * 3800, (i + 1) * 3800));
+    let i = 0;
+    const next = () => { if (i < n) { CS.setItem('d' + i, parts[i], () => { i++; next(); }); } else CS.setItem('dn', String(n)); };
+    next();
+  }, 900);
+}
+function cloudLoad() {
+  if (!CS) return;
+  CS.getItem('dn', (e, v) => {
+    const n = +v; if (e || !n) { if (DB.girls.length) cloudSave(); return; }
+    CS.getItems(Array.from({length: n}, (_, i) => 'd' + i), (e2, vals) => {
+      if (e2 || !vals) return;
+      try {
+        const obj = JSON.parse(Array.from({length: n}, (_, i) => vals['d' + i] || '').join(''));
+        if (obj && obj.girls && (obj.savedAt || 0) > (DB.savedAt || 0)) { DB = obj; try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (x) {} render(); }
+      } catch (x) {}
+    });
+  });
+}
+
+/* ============ girl logic ============ */
+const cur = g => { for (let k = 7; k >= 1; k--) if (g.st[k]) return k; return 0; };
+const nextStage = g => { const c = cur(g); return c >= 7 ? 0 : c === 5 ? 6 : c + 1; };
+const status = g => g.lost ? 'lost' : g.st[7] ? 'done' : 'active';
+const lastDate = g => [...Object.values(g.st), ...g.meets.map(m => m.date), g.lost && g.lost.date].filter(Boolean).sort().pop() || '';
+const byId = id => DB.girls.find(g => g.id === id);
+function newGirl({name = '', loc = '', note = '', date = today(), demo = false} = {}) {
+  return {id: uid(), name, loc, note, st: {1: date}, meets: [], lost: null, created: Date.now(), upd: Date.now(), demo};
+}
+function setStage(g, k, date) {
+  g.st[k] = date;
+  for (let j = 1; j < k; j++) { if (k === 7 && j === 6) continue; if (!g.st[j]) g.st[j] = date; }
+  if (g.lost && k >= g.lost.stage) g.lost = null;
+  g.upd = Date.now();
+}
+function unsetStage(g, k) {
+  delete g.st[k];
+  for (let j = k + 1; j <= 7; j++) { if (k === 6 && j === 7) continue; delete g.st[j]; }
+  if (!g.st[1]) g.st[1] = today();
+  g.upd = Date.now();
+}
+function syncMeets(g) {
+  const ms = [...g.meets].sort((a, b) => a.date < b.date ? -1 : 1);
+  if (ms.length && !g.st[4]) { const d = ms[0].date < today() ? ms[0].date : today(); setStage(g, 4, d); }
+  const done = ms.filter(m => m.status === 'done').map(m => m.date);
+  if (done[0] && !g.st[5]) setStage(g, 5, done[0]);
+  if (done[1] && !g.st[6]) setStage(g, 6, done[1]);
+}
+
+/* ============ period ============ */
+const PRESETS = [['w','7 дней'],['m','30 дней'],['q','90 дней'],['y','Год'],['all','Всё время']];
+function range() {
+  const t = today();
+  switch (P.preset) {
+    case 'w': return [addDays(t, -6), t];
+    case 'm': return [addDays(t, -29), t];
+    case 'q': return [addDays(t, -89), t];
+    case 'y': return [addDays(t, -364), t];
+    case 'custom': return [P.from || '0000-01-01', P.to || '9999-12-31'];
+    default: return ['0000-01-01', '9999-12-31'];
+  }
+}
+const inR = (d, r) => !!d && d >= r[0] && d <= r[1];
+function periodLabel() {
+  if (P.preset === 'custom') { return (P.from ? fmt(P.from) : '…') + ' – ' + (P.to ? fmt(P.to) : '…'); }
+  return (PRESETS.find(p => p[0] === P.preset) || PRESETS[1])[1];
+}
+function sample() {
+  const r = range(), res = [0,0,0,0,0,0,0,0];
+  let pool;
+  if (P.mode === 'cohort') {
+    pool = DB.girls.filter(g => inR(g.st[1], r));
+    pool.forEach(g => { for (let k = 1; k <= 7; k++) if (g.st[k]) res[k]++; });
+  } else {
+    pool = DB.girls.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)) || (g.lost && inR(g.lost.date, r)));
+    DB.girls.forEach(g => { for (let k = 1; k <= 7; k++) if (inR(g.st[k], r)) res[k]++; });
+  }
+  return {r, res, pool};
+}
+const stepConv = (res, k) => k === 1 ? null : k === 7 ? pct(res[7], res[5]) : pct(res[k], res[k - 1]);
+
+/* ============ UI helpers ============ */
+function toast(msg, undo) {
+  const box = $('#toast');
+  box.innerHTML = `<div class="t"><span>${esc(msg)}</span>${undo ? '<button>Отменить</button>' : ''}</div>`;
+  if (undo) box.querySelector('button').onclick = () => { undo(); box.innerHTML = ''; };
+  clearTimeout(toast.t); toast.t = setTimeout(() => box.innerHTML = '', undo ? 4000 : 2200);
+}
+function confirmBox(msg, cb) {
+  if (ver('6.2')) tg.showConfirm(msg, ok => ok && cb()); else if (confirm(msg)) cb();
+}
+const avColors = name => { let h = 0; for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) >>> 0; const a = STAGES[h % 7].c, b = STAGES[(h >> 3) % 7].c; return `linear-gradient(135deg,${a},${b === a ? '#FF9346' : b})`; };
+const initials = n => (String(n).trim()[0] || '?').toUpperCase();
+function avatar(g, cls = 'av') {
+  const p = PH[g.id];
+  return p ? `<div class="${cls}"><img src="${p}" alt=""></div>` : `<div class="${cls}" style="background:${avColors(g.name || g.id)}">${esc(initials(g.name))}</div>`;
+}
+const q = k => `<button class="q" data-hint="${k}" aria-label="Подсказка">?</button>`;
+
+// hints
+const hintEl = $('#hint');
+document.addEventListener('click', e => {
+  const h = e.target.closest('[data-hint]');
+  if (h) { e.stopPropagation(); e.preventDefault(); showHint(h); return; }
+  if (hintEl.classList.contains('show')) { hintEl.classList.remove('show'); }
+}, true);
+function showHint(el) {
+  hintEl.textContent = HINTS[el.dataset.hint] || '';
+  hintEl.classList.add('show');
+  const r = el.getBoundingClientRect(), w = Math.min(280, innerWidth - 24);
+  hintEl.style.width = w + 'px';
+  let left = Math.min(Math.max(12, r.left + r.width / 2 - w / 2), innerWidth - w - 12);
+  hintEl.style.left = left + 'px';
+  const hh = hintEl.offsetHeight;
+  hintEl.style.top = (r.bottom + 8 + hh < innerHeight - 20 ? r.bottom + 8 : Math.max(12, r.top - hh - 8)) + 'px';
+  hap('soft');
+}
+document.addEventListener('scroll', () => hintEl.classList.remove('show'), true);
+
+// back button
+const navStack = [];
+function pushNav(close) { navStack.push(close); syncBack(); }
+function popNav() { const c = navStack.pop(); syncBack(); c && c(); }
+function syncBack() { if (!tg || !ver('6.1')) return; navStack.length ? tg.BackButton.show() : tg.BackButton.hide(); }
+if (tg && ver('6.1')) tg.BackButton.onClick(() => popNav());
+
+/* ============ sheets ============ */
+function openSheet(html, mount) {
+  const wrap = $('#sheets');
+  const bd = document.createElement('div'); bd.className = 'bd';
+  const sh = document.createElement('div'); sh.className = 'sheet';
+  sh.innerHTML = '<div class="grab"></div>' + html;
+  wrap.append(bd, sh);
+  requestAnimationFrame(() => { bd.classList.add('open'); sh.classList.add('open'); });
+  let closed = false;
+  const close = () => {
+    if (closed) return; closed = true;
+    const i = navStack.indexOf(close); if (i >= 0) { navStack.splice(i, 1); syncBack(); }
+    bd.classList.remove('open'); sh.classList.remove('open');
+    setTimeout(() => { bd.remove(); sh.remove(); }, 320);
+  };
+  bd.onclick = close;
+  pushNav(close);
+  // swipe down to close
+  let y0 = null;
+  sh.addEventListener('touchstart', e => { if (sh.scrollTop <= 0) y0 = e.touches[0].clientY; }, {passive: true});
+  sh.addEventListener('touchmove', e => { if (y0 === null) return; const dy = e.touches[0].clientY - y0; if (dy > 0) { sh.style.transition = 'none'; sh.style.transform = `translateY(${dy}px)`; } }, {passive: true});
+  sh.addEventListener('touchend', e => { if (y0 === null) return; const dy = e.changedTouches[0].clientY - y0; sh.style.transition = ''; sh.style.transform = ''; y0 = null; if (dy > 90) close(); });
+  mount && mount(sh, close);
+  return close;
+}
+
+/* ============ tabs / render ============ */
+let TAB = 'funnel';
+const LF = {status: 'active', stage: 0, q: '', period: false};
+$$('.tab').forEach(b => b.onclick = () => { TAB = b.dataset.tab; hap('soft'); render(); $('#view').scrollTop = 0; });
+$('#fab').onclick = () => { hap(); addSheet(); };
+$('#periodBtn').onclick = () => { hap('soft'); periodSheet(); };
+$('#setBtn').onclick = () => { hap('soft'); settingsSheet(); };
+
+function render() {
+  $$('.tab').forEach(b => b.classList.toggle('on', b.dataset.tab === TAB));
+  $('#title').textContent = {funnel: 'Воронка', list: 'Девушки', why: 'Причины'}[TAB];
+  $('#periodLbl').textContent = periodLabel();
+  $('#fab').style.display = TAB === 'why' ? 'none' : '';
+  const v = $('#view');
+  if (!DB.girls.length) { v.innerHTML = emptyHTML(); bindEmpty(); return; }
+  if (TAB === 'funnel') renderFunnel(v);
+  else if (TAB === 'list') renderList(v);
+  else renderWhy(v);
+}
+
+function emptyHTML() {
+  return `<div class="empty">
+    <svg viewBox="0 0 96 96" fill="none"><defs><linearGradient id="eg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6C7BFF"/><stop offset=".55" stop-color="#F2559D"/><stop offset="1" stop-color="#FF9346"/></linearGradient></defs>
+      <rect x="10" y="16" width="76" height="12" rx="6" fill="url(#eg)" opacity=".35"/><rect x="20" y="34" width="56" height="12" rx="6" fill="url(#eg)" opacity=".55"/><rect x="30" y="52" width="36" height="12" rx="6" fill="url(#eg)" opacity=".8"/><rect x="40" y="70" width="16" height="12" rx="6" fill="url(#eg)"/></svg>
+    <h3>Воронка пуста</h3>
+    <p>Добавь первую девушку — дальше просто отмечай этапы.</p>
+    <button class="btn pri full" id="eAdd">${IC.plus} Добавить</button>
+    <button class="btn ghost full" id="eDemo" style="margin-top:8px">Посмотреть на демо-данных</button>
+  </div>`;
+}
+function bindEmpty() {
+  $('#eAdd').onclick = () => addSheet();
+  $('#eDemo').onclick = () => { makeDemo(); save(); render(); toast('Демо загружено. Удалить — в меню ···'); };
+}
+
+/* ---------- funnel tab ---------- */
+function renderFunnel(v) {
+  const {r, res, pool} = sample();
+  const max = Math.max(1, res[1], ...res.slice(2));
+  const rows = STAGES.map(s => {
+    const n = res[s.k], w = Math.max(8, n / max * 100), sc = stepConv(res, s.k), fs = s.k > 1 ? pct(n, res[1]) : null;
+    const nxt = STAGES[Math.min(6, s.k)].c;
+    return `<div class="fr" data-k="${s.k}">
+      <div class="fr-l"><span class="dot" style="background:${s.c}"></span>${s.n}${s.k === 7 ? ' ' + q('sex') : ''}</div>
+      <div class="fr-bar"><div class="fr-fill num" style="width:${w}%;background:linear-gradient(90deg,${s.c},${nxt});${n ? '' : 'opacity:.22'}">${n}</div></div>
+      <div class="fr-c num">${sc === null ? '<b style="color:var(--tx3)">—</b>' : `<b>${sc}%</b><small>${fs}%</small>`}</div>
+    </div>`;
+  }).join('');
+  const firstDate = pool.filter(g => g.st[7] && !g.st[6] && (P.mode === 'cohort' || inR(g.st[7], r))).length;
+  const meets = DB.girls.flatMap(g => g.meets).filter(m => inR(m.date, r));
+  const bad = meets.filter(m => m.status === 'resch' || m.status === 'cancel').length;
+  const active = DB.girls.filter(g => status(g) === 'active');
+  const pipe = [1,2,3,4,5,6].map(k => [k, active.filter(g => cur(g) === k).length]).filter(x => x[1]);
+
+  v.innerHTML = `
+    <div class="seg" id="mode">
+      <button data-m="cohort" class="${P.mode === 'cohort' ? 'on' : ''}">Когорта</button>
+      <button data-m="events" class="${P.mode === 'events' ? 'on' : ''}">События</button>
+      <div style="display:grid;place-items:center;padding:0 6px">${q('mode')}</div>
+    </div>
+    <div class="kpis">
+      <div class="kpi">${q('kpi_total')}<b class="num">${res[1]}</b><span>написал</span></div>
+      <div class="kpi">${q('kpi_meet')}<b class="num">${pct(res[5], res[1]) ?? '—'}${res[1] ? '%' : ''}</b><span>до встречи</span></div>
+      <div class="kpi">${q('kpi_end')}<b class="num" style="background:linear-gradient(90deg,#FF5C8A,#FF9346);-webkit-background-clip:text;background-clip:text;color:transparent">${pct(res[7], res[1]) ?? '—'}${res[1] ? '%' : ''}</b><span>до секса</span></div>
+    </div>
+    <div class="card">
+      <div class="fhead"><div></div><div></div><div style="display:flex;justify-content:flex-end;gap:4px;align-items:center">шаг ${q('fcols')}</div></div>
+      ${rows}
+    </div>
+    <div class="mini" style="margin-bottom:12px">
+      <div class="mt">${q('firstdate')}<b class="num">${firstDate}</b><span>секс на 1-й встрече</span></div>
+      <div class="mt">${q('canc')}<b class="num">${meets.length ? pct(bad, meets.length) + '%' : '—'}</b><span>переносы и отмены</span><small>${bad} из ${meets.length} ${plural(meets.length,'встречи','встреч','встреч')}</small></div>
+    </div>
+    ${pipe.length ? `<div class="card"><div class="ct">Сейчас в работе <span class="sp"></span>${q('pipe')}</div>
+      <div class="pipe">${pipe.map(([k, n]) => `<button class="pp" data-pk="${k}"><span class="dot" style="background:${S(k).c}"></span>${S(k).n}<span class="num" style="color:var(--tx2)">${n}</span></button>`).join('')}</div></div>` : ''}
+  `;
+  $$('#mode button[data-m]').forEach(b => b.onclick = () => { P.mode = b.dataset.m; savePrefs(); hap('soft'); render(); });
+  $$('.fr').forEach(el => el.onclick = () => { LF.stage = +el.dataset.k; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
+  $$('[data-pk]').forEach(el => el.onclick = () => { LF.stage = +el.dataset.pk; LF.status = 'active'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
+}
+
+/* ---------- list tab ---------- */
+function renderList(v) {
+  const r = range();
+  let list = DB.girls.slice();
+  if (LF.status !== 'all') list = list.filter(g => status(g) === LF.status);
+  if (LF.stage) list = list.filter(g => cur(g) === LF.stage);
+  if (LF.period) list = list.filter(g => Object.values(g.st).some(d => inR(d, r)) || g.meets.some(m => inR(m.date, r)));
+  if (LF.q) { const s = LF.q.toLowerCase(); list = list.filter(g => (g.name + ' ' + g.loc + ' ' + g.note).toLowerCase().includes(s)); }
+  list.sort((a, b) => (lastDate(b) + b.upd).localeCompare(lastDate(a) + a.upd));
+  const cnt = st => DB.girls.filter(g => st === 'all' || status(g) === st).length;
+  const chip = (st, label) => `<button class="chip ${LF.status === st ? 'on' : ''}" data-s="${st}">${label} <span class="num" style="opacity:.6">${cnt(st)}</span></button>`;
+
+  v.innerHTML = `
+    <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка" value="${esc(LF.q)}"></div>
+    <div class="chips">
+      ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
+      ${chip('active', 'В работе')}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
+      <button class="chip ${LF.period ? 'on' : ''}" id="lp">За период</button>
+    </div>
+    <div id="gl">${list.length ? list.map(cardHTML).join('') : `<div class="sub" style="padding:40px 0">Никого не найдено</div>`}</div>`;
+  const qs = $('#qs');
+  qs.oninput = () => { LF.q = qs.value; const pos = qs.selectionStart; renderList(v); const n = $('#qs'); n.focus(); n.setSelectionRange(pos, pos); };
+  $$('.chip[data-s]').forEach(c => c.onclick = () => { LF.status = c.dataset.s; hap('soft'); renderList(v); });
+  const stx = $('#stx'); if (stx) stx.onclick = () => { LF.stage = 0; renderList(v); };
+  $('#lp').onclick = () => { LF.period = !LF.period; hap('soft'); renderList(v); };
+  bindCards(v);
+}
+function cardHTML(g) {
+  const c = cur(g), st = status(g), nx = nextStage(g);
+  const prog = STAGES.map(s => `<i style="${g.st[s.k] ? 'background:' + s.c : ''}"></i>`).join('');
+  const days = lastDate(g) ? dDiff(lastDate(g), today()) : 0;
+  const sub = st === 'lost' ? `слив · ${esc(g.lost.reason || LOSS_T[g.lost.stage])}` : [g.loc && esc(g.loc), days > 0 ? `${days} дн. назад` : 'сегодня'].filter(Boolean).join(' · ');
+  let right = '';
+  if (st === 'active' && nx) right = `<button class="adv" data-adv="${g.id}" style="color:${S(nx).c}">${IC.arrow}${S(nx).n}</button>`;
+  else if (st === 'done') right = `<span class="badge" style="background:rgba(255,147,70,.15);color:#FF9346">🔥</span>`;
+  return `<div class="g ${st === 'lost' ? 'lost' : ''}" data-id="${g.id}">
+    ${avatar(g)}
+    <div class="g-m"><div class="g-n">${esc(g.name || 'Без имени')}</div><div class="g-s">${sub}</div><div class="prog">${prog}</div></div>
+    ${right}
+  </div>`;
+}
+function bindCards(v) {
+  $$('.g', v).forEach(el => el.onclick = e => {
+    const a = e.target.closest('[data-adv]');
+    if (a) {
+      e.stopPropagation();
+      const g = byId(a.dataset.adv), nx = nextStage(g), snap = JSON.stringify(g);
+      setStage(g, nx, today()); save(); hapN('success'); render();
+      toast(`${g.name || 'Она'} → ${S(nx).n}`, () => { Object.assign(g, JSON.parse(snap)); save(); render(); });
+      return;
+    }
+    hap('soft'); openGirl(el.dataset.id);
+  });
+}
+
+/* ---------- why tab ---------- */
+function renderWhy(v) {
+  const {r, pool} = sample();
+  const lostSet = P.mode === 'cohort' ? pool.filter(g => g.lost) : DB.girls.filter(g => g.lost && inR(g.lost.date, r));
+  const by = {};
+  lostSet.forEach(g => { const k = g.lost.stage; (by[k] = by[k] || {}); const rs = g.lost.reason || 'Без причины'; by[k][rs] = (by[k][rs] || 0) + 1; });
+  const stages = Object.keys(by).map(Number).sort((a, b) => a - b);
+  const lossHTML = stages.length ? stages.map(k => {
+    const items = Object.entries(by[k]).sort((a, b) => b[1] - a[1]), tot = items.reduce((s, x) => s + x[1], 0), mx = items[0][1];
+    return `<div class="lr"><div class="lr-h"><span class="dot" style="background:${S(k).c}"></span>${LOSS_T[k]}<span class="sp"></span><span class="num" style="color:var(--tx2)">${tot}</span></div>
+      ${items.map(([rs, n]) => `<div class="rb"><div class="rb-t"><i style="width:${n / mx * 100}%;background:${S(k).c}"></i><span>${esc(rs)}</span></div><b class="num">${n}</b></div>`).join('')}</div>`;
+  }).join('') : `<div class="sub" style="padding:14px 0">Сливов за период нет</div>`;
+
+  const meets = DB.girls.flatMap(g => g.meets).filter(m => inR(m.date, r));
+  const mc = s => meets.filter(m => m.status === s);
+  const who = (arr) => { const me = arr.filter(m => m.who === 'me').length, her = arr.filter(m => m.who === 'her').length; return `она ${her} · я ${me}`; };
+
+  const pairs = [[1,2,'Написал → ответила'],[2,3,'Ответила → позвал'],[3,5,'Позвал → встреча'],[5,6,'Встреча → 2-е'],[1,5,'Написал → встреча']];
+  const spd = pairs.map(([a, b, n]) => { const m = median(pool.filter(g => g.st[a] && g.st[b]).map(g => Math.max(0, dDiff(g.st[a], g.st[b])))); return `<div class="sr"><span>${n}</span><span class="sp"></span><b class="num">${m === null ? '—' : (Math.round(m * 10) / 10) + ' дн.'}</b></div>`; }).join('');
+
+  v.innerHTML = `
+    <div class="card"><div class="ct">Где теряю <span class="num" style="color:var(--tx)">${lostSet.length}</span><span class="sp"></span>${q('losses')}</div>${lossHTML}</div>
+    <div class="card"><div class="ct">Встречи<span class="sp"></span>${q('meets')}</div>
+      <div class="mini">
+        <div class="mt"><b class="num" style="color:var(--plan)">${meets.length}</b><span>назначено</span></div>
+        <div class="mt"><b class="num" style="color:var(--ok)">${mc('done').length}</b><span>состоялись</span></div>
+        <div class="mt"><b class="num" style="color:var(--warn)">${mc('resch').length}</b><span>переносы</span><small>${who(mc('resch'))}</small></div>
+        <div class="mt"><b class="num" style="color:var(--bad)">${mc('cancel').length}</b><span>отмены</span><small>${who(mc('cancel'))}</small></div>
+      </div>
+    </div>
+    <div class="card"><div class="ct">Скорость, медиана<span class="sp"></span>${q('speed')}</div>${spd}</div>`;
+}
+
+/* ============ girl page ============ */
+let PAGE_ID = null;
+function openGirl(id) {
+  PAGE_ID = id;
+  const page = $('#page');
+  drawGirl();
+  requestAnimationFrame(() => page.classList.add('open'));
+  page.scrollTop = 0;
+  const close = () => { page.classList.remove('open'); PAGE_ID = null; render(); };
+  closeGirl.fn = close;
+  pushNav(close);
+}
+function closeGirl() { const i = navStack.indexOf(closeGirl.fn); if (i >= 0) { navStack.splice(i, 1); syncBack(); } closeGirl.fn && closeGirl.fn(); }
+function drawGirl() {
+  const g = byId(PAGE_ID); if (!g) return;
+  const page = $('#page'), ph = PH[g.id], st = status(g);
+  const steps = STAGES.map(s => {
+    const on = !!g.st[s.k], skip = s.k === 6 && !on && g.st[7];
+    return `<div class="step ${on ? 'on' : ''} ${skip ? 'skip' : ''}" data-k="${s.k}" style="--lc:${s.c}">
+      <button class="sd" data-tog="${s.k}" style="${on ? `background:${s.c};border-color:${s.c}` : ''}">${IC.check}</button>
+      <div class="sl">${s.n}${skip ? '<small>пропущено</small>' : ''}</div>
+      ${skip ? q('skip') : on ? `<input type="date" data-date="${s.k}" value="${g.st[s.k]}">` : `<span class="plus">${IC.plus}</span>`}
+    </div>`;
+  }).join('');
+  const meets = [...g.meets].sort((a, b) => a.date < b.date ? 1 : -1).map(m => {
+    const d = new Date(m.date + 'T12:00:00'), t = MST[m.status];
+    const whoTxt = (m.status === 'resch' || m.status === 'cancel') && m.who ? (m.who === 'me' ? ' · я' : ' · она') : '';
+    return `<div class="mrow" data-m="${m.id}">
+      <div class="mdate"><b class="num">${d.getDate()}</b><span>${MON[d.getMonth()]}</span></div>
+      <div class="mm"><span class="tag" style="background:${t.c}22;color:${t.c}">${t.n}${whoTxt}</span>${m.note ? `<div class="ms">${esc(m.note)}</div>` : `<div class="ms">${WD[d.getDay()]}</div>`}</div>
+    </div>`;
+  }).join('');
+  const locs = [...new Set(DB.girls.map(x => x.loc).filter(Boolean))];
+
+  page.innerHTML = `
+    <div class="hero" style="${ph ? '' : 'background:' + avColors(g.name || g.id)}">
+      ${ph ? `<img class="bgimg" src="${ph}" alt="">` : `<div class="bgini">${esc(initials(g.name))}</div>`}
+      <div class="hero-top"><button class="hbtn" id="pBack">${IC.back}</button><button class="hbtn" id="pCam">${IC.cam}</button></div>
+      <div class="hero-b">
+        <input class="h-name" id="pName" value="${esc(g.name)}" placeholder="Имя">
+        <div class="h-loc">${IC.pin}<input id="pLoc" list="locs" value="${esc(g.loc)}" placeholder="Где познакомились"></div>
+        <datalist id="locs">${locs.map(l => `<option value="${esc(l)}">`).join('')}</datalist>
+      </div>
+    </div>
+    <div class="pad">
+      ${st === 'lost' ? `<div class="lostbar"><div class="sp">Слив · ${LOSS_T[g.lost.stage]}<small>${esc(g.lost.reason || '')}${g.lost.note ? ' — ' + esc(g.lost.note) : ''} · ${fmt(g.lost.date)}</small></div><button class="btn" style="height:36px;padding:0 12px;font-size:13px" id="pRestore">Вернуть</button></div>` : ''}
+      <div class="card"><div class="ct">Этапы<span class="sp"></span>${q('stages')}</div><div class="steps">${steps}</div></div>
+      <div class="card"><div class="ct">Встречи<span class="sp"></span>${q('meets')}<button class="addm" id="pAddM">${IC.plus.replace('<svg', '<svg width="14" height="14"')} Встреча</button></div>
+        ${meets || '<div class="sub" style="text-align:left;margin:0">Пока не назначали</div>'}</div>
+      <div class="card"><div class="ct">Заметка</div><textarea class="note" id="pNote" placeholder="Что важно помнить: интересы, детали, о чём говорили">${esc(g.note)}</textarea></div>
+      <div class="acts">
+        ${st !== 'lost' && st !== 'done' ? `<button class="btn" id="pLost" style="color:var(--bad)">Слив</button>` : ''}
+        <button class="btn ghost" id="pDel">${IC.trash.replace('<svg', '<svg width="18" height="18"')} Удалить</button>
+      </div>
+      <div class="sub">${st !== 'lost' && st !== 'done' ? 'Слив — если общение остановилось ' + q('lost') : ''}</div>
+    </div>`;
+
+  let t;
+  const saveSoon = () => { clearTimeout(t); t = setTimeout(save, 400); };
+  $('#pName').oninput = e => { g.name = e.target.value; g.upd = Date.now(); saveSoon(); };
+  $('#pLoc').oninput = e => { g.loc = e.target.value; g.upd = Date.now(); saveSoon(); };
+  $('#pNote').oninput = e => { g.note = e.target.value; g.upd = Date.now(); saveSoon(); };
+  $('#pBack').onclick = () => closeGirl();
+  $('#pCam').onclick = () => photoSheet(g);
+  $$('.step', page).forEach(row => row.onclick = e => {
+    if (e.target.closest('input')) return;
+    const k = +row.dataset.k;
+    if (g.st[k]) {
+      if (!e.target.closest('[data-tog]')) return;
+      const later = STAGES.filter(s => s.k > k && g.st[s.k] && !(k === 6 && s.k === 7)).length;
+      const go = () => { unsetStage(g, k); save(); hap(); drawGirl(); };
+      later ? confirmBox(`Снять «${S(k).n}» и все следующие этапы?`, go) : go();
+    } else {
+      setStage(g, k, today()); save(); hapN('success'); drawGirl();
+    }
+  });
+  $$('input[data-date]', page).forEach(inp => inp.onchange = () => { if (inp.value) { g.st[+inp.dataset.date] = inp.value; g.upd = Date.now(); save(); } });
+  $('#pAddM').onclick = () => meetSheet(g);
+  $$('.mrow', page).forEach(r => r.onclick = () => meetSheet(g, g.meets.find(m => m.id === r.dataset.m)));
+  const lb = $('#pLost'); if (lb) lb.onclick = () => lostSheet(g);
+  const rb = $('#pRestore'); if (rb) rb.onclick = () => { g.lost = null; g.upd = Date.now(); save(); hapN('success'); drawGirl(); };
+  $('#pDel').onclick = () => confirmBox(`Удалить ${g.name || 'карточку'} безвозвратно?`, () => {
+    DB.girls = DB.girls.filter(x => x.id !== g.id); setPhoto(g.id, null); save(); closeGirl(); toast('Удалено');
+  });
+}
+
+/* ============ photo ============ */
+function pickPhoto(cb) {
+  const i = document.createElement('input'); i.type = 'file'; i.accept = 'image/*';
+  i.onchange = () => {
+    const f = i.files[0]; if (!f) return;
+    const url = URL.createObjectURL(f), img = new Image();
+    img.onload = () => {
+      const m = 640, s = Math.min(1, m / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); cb(c.toDataURL('image/jpeg', .8));
+    };
+    img.onerror = () => toast('Не удалось открыть фото');
+    img.src = url;
+  };
+  i.click();
+}
+function photoSheet(g) {
+  if (!PH[g.id]) { pickPhoto(d => { setPhoto(g.id, d); drawGirl(); }); return; }
+  openSheet(`<h2>Фото</h2>
+    <button class="list-btn" id="phN">${IC.cam}Заменить</button>
+    <button class="list-btn danger" id="phD">${IC.trash}Удалить фото</button>`, (sh, close) => {
+    $('#phN', sh).onclick = () => { close(); pickPhoto(d => { setPhoto(g.id, d); drawGirl(); }); };
+    $('#phD', sh).onclick = () => { close(); setPhoto(g.id, null); drawGirl(); };
+  });
+}
+
+/* ============ sheets: add / meet / lost / period / settings ============ */
+function addSheet() {
+  let photo = null;
+  const locs = [...new Set(DB.girls.map(x => x.loc).filter(Boolean))];
+  openSheet(`<h2>Новая</h2>
+    <button class="photo-pick" id="aPh">${IC.cam}</button>
+    <div class="fld"><label>Имя</label><input id="aName" placeholder="Как её зовут" autocomplete="off"></div>
+    <div class="fld"><label>Где познакомились</label><input id="aLoc" list="alocs" placeholder="Tinder, кофейня в Чангу…" autocomplete="off"><datalist id="alocs">${locs.map(l => `<option value="${esc(l)}">`).join('')}</datalist></div>
+    <div class="row2">
+      <div class="fld"><label>Написал</label><input type="date" id="aDate" value="${today()}"></div>
+      <div class="fld"><label>Уже на этапе</label><select id="aSt" style="width:100%;background:none;border:0;color:var(--tx);font:inherit;font-size:16px;font-weight:600;outline:0">${STAGES.map(s => `<option value="${s.k}">${s.n}</option>`).join('')}</select></div>
+    </div>
+    <div class="fld"><label>Заметка</label><textarea id="aNote" rows="2" style="resize:none" placeholder="Необязательно"></textarea></div>
+    <button class="btn pri full" id="aSave">Добавить</button>`, (sh, close) => {
+    $('#aPh', sh).onclick = () => pickPhoto(d => { photo = d; $('#aPh', sh).innerHTML = `<img src="${d}">`; });
+    setTimeout(() => $('#aName', sh).focus(), 350);
+    $('#aSave', sh).onclick = () => {
+      const name = $('#aName', sh).value.trim();
+      if (!name) { $('#aName', sh).focus(); hapN('error'); return; }
+      const date = $('#aDate', sh).value || today();
+      const g = newGirl({name, loc: $('#aLoc', sh).value.trim(), note: $('#aNote', sh).value.trim(), date});
+      const k = +$('#aSt', sh).value; if (k > 1) setStage(g, k, date);
+      DB.girls.unshift(g); if (photo) setPhoto(g.id, photo); save(); hapN('success'); close();
+      TAB = 'list'; LF.status = 'active'; LF.stage = 0; LF.q = ''; render(); toast(`${name} добавлена`);
+    };
+  });
+}
+
+function meetSheet(g, m) {
+  const isNew = !m;
+  const d = m ? {...m} : {id: uid(), date: today(), status: 'plan', who: '', note: ''};
+  openSheet(`<h2>${isNew ? 'Новая встреча' : 'Встреча'}</h2>
+    <div class="fld"><label>Дата</label><input type="date" id="mDate" value="${d.date}"></div>
+    <div class="slbl">Статус</div>
+    <div class="seg" id="mSt" style="margin-bottom:12px">${Object.entries(MST).map(([k, v]) => `<button data-v="${k}" class="${d.status === k ? 'on' : ''}">${v.n}</button>`).join('')}</div>
+    <div id="mWhoBox">
+      <div class="slbl">Кто ${q('who')}</div>
+      <div class="seg" id="mWho" style="margin-bottom:12px"><button data-v="her" class="${d.who === 'her' ? 'on' : ''}">Она</button><button data-v="me" class="${d.who === 'me' ? 'on' : ''}">Я</button></div>
+    </div>
+    <div class="fld" id="mNewBox"><label>Новая дата</label><input type="date" id="mNew" value="${addDays(today(), 2)}"></div>
+    <div class="fld"><label>Заметка</label><input id="mNote" value="${esc(d.note)}" placeholder="Место, детали"></div>
+    <div class="sbtns">${isNew ? '' : `<button class="btn danger" id="mDel">${IC.trash.replace('<svg', '<svg width="18" height="18"')}</button>`}<button class="btn pri" id="mSave" style="flex:3">Сохранить</button></div>`, (sh, close) => {
+    const upd = () => {
+      $$('#mSt button', sh).forEach(b => b.classList.toggle('on', b.dataset.v === d.status));
+      $$('#mWho button', sh).forEach(b => b.classList.toggle('on', b.dataset.v === d.who));
+      $('#mWhoBox', sh).style.display = (d.status === 'resch' || d.status === 'cancel') ? '' : 'none';
+      $('#mNewBox', sh).style.display = d.status === 'resch' && (isNew || m.status !== 'resch') ? '' : 'none';
+    };
+    $$('#mSt button', sh).forEach(b => b.onclick = () => { d.status = b.dataset.v; if ((d.status === 'resch' || d.status === 'cancel') && !d.who) d.who = 'her'; hap('soft'); upd(); });
+    $$('#mWho button', sh).forEach(b => b.onclick = () => { d.who = b.dataset.v; hap('soft'); upd(); });
+    upd();
+    $('#mSave', sh).onclick = () => {
+      d.date = $('#mDate', sh).value || today(); d.note = $('#mNote', sh).value.trim();
+      if (d.status !== 'resch' && d.status !== 'cancel') d.who = '';
+      const wasResch = m && m.status === 'resch';
+      if (isNew) g.meets.push(d); else Object.assign(m, d);
+      if (d.status === 'resch' && !wasResch) {
+        const nd = $('#mNew', sh).value;
+        if (nd) g.meets.push({id: uid(), date: nd, status: 'plan', who: '', note: d.note});
+      }
+      syncMeets(g); g.upd = Date.now(); save(); hapN('success'); close(); drawGirl();
+    };
+    const del = $('#mDel', sh);
+    if (del) del.onclick = () => { g.meets = g.meets.filter(x => x.id !== m.id); g.upd = Date.now(); save(); close(); drawGirl(); };
+  });
+}
+
+function lostSheet(g) {
+  const k = nextStage(g) || 7;
+  let reason = '';
+  openSheet(`<h2>Слив <small>· ${LOSS_T[k]}</small></h2>
+    <div class="slbl">Причина ${q('lost')}</div>
+    <div class="rgrid">${REASONS[k].map(r => `<button class="rc" data-r="${esc(r)}">${esc(r)}</button>`).join('')}<button class="rc" data-r="__other">Другое</button></div>
+    <div class="fld"><label>Комментарий</label><input id="lNote" placeholder="Необязательно"></div>
+    <button class="btn pri full" id="lSave">Отметить слив</button>`, (sh, close) => {
+    $$('.rc', sh).forEach(b => b.onclick = () => {
+      $$('.rc', sh).forEach(x => x.classList.remove('on')); b.classList.add('on'); hap('soft');
+      reason = b.dataset.r; if (reason === '__other') $('#lNote', sh).focus();
+    });
+    $('#lSave', sh).onclick = () => {
+      const note = $('#lNote', sh).value.trim();
+      let rs = reason === '__other' ? (note || 'Другое') : reason;
+      if (!rs) { hapN('error'); toast('Выбери причину'); return; }
+      g.lost = {stage: k, reason: rs, note: reason === '__other' ? '' : note, date: today()};
+      g.upd = Date.now(); save(); hapN('warning'); close(); drawGirl();
+    };
+  });
+}
+
+function periodSheet() {
+  openSheet(`<h2>Период</h2>
+    <div class="rgrid">${PRESETS.map(([k, n]) => `<button class="rc ${P.preset === k ? 'on' : ''}" data-p="${k}">${n}</button>`).join('')}</div>
+    <div class="slbl">Свой</div>
+    <div class="row2"><div class="fld"><label>С</label><input type="date" id="pf" value="${P.from}"></div><div class="fld"><label>По</label><input type="date" id="pt" value="${P.to}"></div></div>
+    <button class="btn pri full" id="pOk">Готово</button>`, (sh, close) => {
+    $$('[data-p]', sh).forEach(b => b.onclick = () => { P.preset = b.dataset.p; savePrefs(); hap('soft'); close(); render(); });
+    const custom = () => { $$('[data-p]', sh).forEach(x => x.classList.remove('on')); };
+    $('#pf', sh).onchange = custom; $('#pt', sh).onchange = custom;
+    $('#pOk', sh).onclick = () => {
+      const f = $('#pf', sh).value, t = $('#pt', sh).value;
+      if (f || t) {
+        P.preset = 'custom'; P.from = f; P.to = t;
+        if (f && t && f > t) { P.from = t; P.to = f; }
+      }
+      savePrefs(); close(); render();
+    };
+  });
+}
+
+function settingsSheet() {
+  const demo = DB.girls.filter(g => g.demo).length;
+  openSheet(`<h2>Данные</h2>
+    <div class="sub" style="text-align:left;margin:-6px 0 14px;display:flex;gap:6px;align-items:center">${DB.girls.length} ${plural(DB.girls.length,'карточка','карточки','карточек')} · ${Object.keys(PH).length} фото ${CS ? '· облако TG вкл.' : ''} ${q('storage')}</div>
+    <button class="list-btn" id="sCopy">${IC.copy}<span>Скопировать бэкап<small>JSON в буфер обмена</small></span></button>
+    <button class="list-btn" id="sDl">${IC.dl}<span>Скачать бэкап<small>Файл .json с фото</small></span></button>
+    <button class="list-btn" id="sImp">${IC.ul}<span>Восстановить<small>Из файла или вставкой</small></span></button>
+    ${demo ? `<button class="list-btn" id="sDemo">${IC.spark}<span>Убрать демо-данные<small>${demo} ${plural(demo,'карточка','карточки','карточек')}</small></span></button>` : ''}
+    <button class="list-btn danger" id="sWipe">${IC.trash}<span>Стереть всё</span></button>`, (sh, close) => {
+    const dump = () => JSON.stringify({app: 'voronka', v: 1, at: new Date().toISOString(), girls: DB.girls, photos: PH});
+    $('#sCopy', sh).onclick = async () => {
+      const s = JSON.stringify({app: 'voronka', v: 1, girls: DB.girls});
+      try { await navigator.clipboard.writeText(s); toast('Скопировано (без фото)'); }
+      catch (e) { const ta = document.createElement('textarea'); ta.value = s; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Скопировано (без фото)'); }
+    };
+    $('#sDl', sh).onclick = () => {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([dump()], {type: 'application/json'}));
+      a.download = `voronka-${today()}.json`; document.body.append(a); a.click(); a.remove();
+    };
+    $('#sImp', sh).onclick = () => { close(); importSheet(); };
+    const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); DB.girls = DB.girls.filter(g => !g.demo); save(); close(); render(); toast('Демо удалено'); };
+    $('#sWipe', sh).onclick = () => confirmBox('Стереть все карточки и фото? Это необратимо.', () => {
+      DB.girls.forEach(g => setPhoto(g.id, null)); DB.girls = []; save(); close(); render();
+    });
+  });
+}
+function importSheet() {
+  openSheet(`<h2>Восстановить</h2>
+    <button class="list-btn" id="iFile">${IC.ul}<span>Выбрать файл</span></button>
+    <div class="fld"><label>Или вставь JSON</label><textarea id="iTxt" rows="4" style="resize:none;font-size:13px"></textarea></div>
+    <button class="btn pri full" id="iGo">Восстановить</button>
+    <div class="sub">Текущие данные будут заменены</div>`, (sh, close) => {
+    const apply = txt => {
+      try {
+        const o = JSON.parse(txt); if (!o || !Array.isArray(o.girls)) throw 0;
+        confirmBox(`Заменить данные на ${o.girls.length} ${plural(o.girls.length,'карточку','карточки','карточек')}?`, () => {
+          DB.girls.forEach(g => setPhoto(g.id, null));
+          DB.girls = o.girls; if (o.photos) Object.entries(o.photos).forEach(([k, v]) => setPhoto(k, v));
+          save(); close(); render(); hapN('success'); toast('Восстановлено');
+        });
+      } catch (e) { hapN('error'); toast('Не похоже на бэкап'); }
+    };
+    $('#iFile', sh).onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,application/json'; i.onchange = () => { const f = i.files[0]; if (f) f.text().then(apply); }; i.click(); };
+    $('#iGo', sh).onclick = () => apply($('#iTxt', sh).value);
+  });
+}
+
+/* ============ demo ============ */
+function makeDemo() {
+  const names = ['Аня','Маша','Катя','Лиза','Даша','Соня','Вика','Полина','Алина','Ника','Ева','Кира','Оля','Настя','Юля','Вера','Мила','Лера','Саша','Таня','Ира','Женя','Diana','Kate','Mia','Sofia','Лена','Рита','Алиса','Злата','Ксюша','Arina','Эмма','Lina','Майя','Ульяна'];
+  const locs = ['Tinder','Tinder','Bumble','Instagram','Кофейня, Чангу','Пляж Бату Болонг','Коворкинг','Йога, Убуд','Вечеринка, Улувату','Спортзал'];
+  const t = today(), pick = a => a[Math.floor(Math.random() * a.length)], rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const pTo = {2: .72, 3: .8, 4: .7, 5: .82, 6: .6, 7: .55};
+  names.forEach(name => {
+    const g = newGirl({name, loc: pick(locs), date: addDays(t, -rnd(0, 60)), demo: true});
+    let k = 1, d = g.st[1], stopped = 'fail';
+    while (k < 7) {
+      let nx = k === 5 && Math.random() < .14 ? 7 : k + 1;
+      const nd = addDays(d, nx === 2 ? rnd(0, 2) : nx === 5 ? rnd(1, 6) : nx >= 6 ? rnd(3, 10) : rnd(0, 3));
+      if (nd > t) { stopped = 'time'; break; }
+      if (Math.random() > (pTo[nx] || .5)) { stopped = 'fail'; break; }
+      if (nx === 5 && Math.random() < .3) g.meets.push({id: uid(), date: addDays(nd, -2), status: 'resch', who: Math.random() < .6 ? 'her' : 'me', note: ''});
+      if (nx === 5) g.meets.push({id: uid(), date: nd, status: 'done', who: '', note: ''});
+      if (nx === 6) g.meets.push({id: uid(), date: nd, status: 'done', who: '', note: ''});
+      g.st[nx] = nd; if (nx === 7 && !g.st[6]) {} d = nd; k = nx;
+      if (k === 7) { stopped = 'done'; break; }
+    }
+    for (let j = 1; j < k; j++) if (!g.st[j] && !(k === 7 && j === 6)) g.st[j] = d;
+    if (k === 4 && !g.meets.length) {
+      if (stopped === 'fail') g.meets.push({id: uid(), date: addDays(d, 2), status: 'cancel', who: Math.random() < .7 ? 'her' : 'me', note: ''});
+      else g.meets.push({id: uid(), date: addDays(t, rnd(1, 4)), status: 'plan', who: '', note: ''});
+    }
+    if (stopped === 'fail' && k < 7 && Math.random() < .75 && dDiff(d, t) > 3) {
+      const ls = k === 5 ? 6 : k + 1, rs = REASONS[ls];
+      if (ls === 5 && g.meets.some(m => m.status === 'cancel')) g.lost = {stage: 5, reason: g.meets.find(m => m.status === 'cancel').who === 'me' ? 'Отменил я' : 'Отменила она', note: '', date: addDays(d, 3)};
+      else g.lost = {stage: ls, reason: rs[Math.floor(Math.pow(Math.random(), 1.6) * rs.length)], note: '', date: addDays(d, rnd(2, 6)) > t ? t : addDays(d, rnd(2, 6))};
+    }
+    DB.girls.push(g);
+  });
+}
+
+/* ============ boot ============ */
+function applyTheme() {
+  const dark = tg ? tg.colorScheme !== 'light' : !matchMedia('(prefers-color-scheme: light)').matches;
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  try { if (ver('6.1')) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); } if (ver('7.10')) tg.setBottomBarColor(bg); } catch (e) {}
+}
+(async function boot() {
+  if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); }
+  applyTheme();
+  render();
+  await idb.open();
+  Object.assign(PH, await idb.all());
+  render();
+  cloudLoad();
+})();
+</script>
+</body>
+</html>
