@@ -1179,7 +1179,7 @@ function settingsSheet() {
   openSheet(`<h2>Данные</h2>
     <div class="sub" style="text-align:left;margin:-6px 0 14px;display:flex;gap:6px;align-items:center">${DB.girls.length} ${plural(DB.girls.length,'карточка','карточки','карточек')} · ${Object.keys(PH).length} фото ${CS ? (cloudState.err ? '· <span style="color:var(--bad)">облако: ошибка</span>' : cloudState.ok ? '· облако ✓ ' + new Date(cloudState.ok).toTimeString().slice(0, 5) : '· облако…') : ''} ${q('storage')}</div>
     <button class="list-btn" id="sCopy">${IC.copy}<span>Скопировать бэкап<small>JSON в буфер обмена</small></span></button>
-    <button class="list-btn" id="sDl">${IC.dl}<span>Скачать бэкап<small>Файл .json с фото</small></span></button>
+    <button class="list-btn" id="sDl">${IC.dl}<span>Сохранить бэкап<small>Файл с фото — в «Файлы» или себе в Telegram</small></span></button>
     <button class="list-btn" id="sRec">${IC.spark}<span>Восстановление<small>Автокопии и поиск потерянных карточек</small></span></button>
     <button class="list-btn" id="sImp">${IC.ul}<span>Восстановить из бэкапа<small>Из файла или вставкой</small></span></button>
     ${demo ? `<button class="list-btn" id="sDemo">${IC.spark}<span>Убрать демо-данные<small>${demo} ${plural(demo,'карточка','карточки','карточек')}</small></span></button>` : ''}
@@ -1190,10 +1190,7 @@ function settingsSheet() {
       try { await navigator.clipboard.writeText(s); toast('Скопировано (без фото)'); }
       catch (e) { const ta = document.createElement('textarea'); ta.value = s; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); toast('Скопировано (без фото)'); }
     };
-    $('#sDl', sh).onclick = () => {
-      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([dump()], {type: 'application/json'}));
-      a.download = `voronka-${today()}.json`; document.body.append(a); a.click(); a.remove();
-    };
+    $('#sDl', sh).onclick = () => exportBackup(dump(), close);
     $('#sImp', sh).onclick = () => { close(); importSheet(); };
     $('#sRec', sh).onclick = () => { close(); recoverySheet(); };
     const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); tomb(DB.girls.filter(g => g.demo).map(g => g.id)); DB.girls = DB.girls.filter(g => !g.demo); ensureNums(true); save(); close(); render(); toast('Демо удалено'); };
@@ -1279,6 +1276,41 @@ function recoverySheet() {
     });
   });
 }
+// Telegram's in-app browser on phones can't download blob files (it opens a blank page),
+// so on phones we hand the file to the system share sheet; text copy is the last resort.
+async function exportBackup(txt, closeParent) {
+  const name = `voronka-${today()}`;
+  const mobile = (tg && /ios|android/i.test(tg.platform || '')) || /iPhone|iPad|Android/i.test(navigator.userAgent);
+  if (navigator.share && navigator.canShare) {
+    for (const [ext, type] of [['json', 'application/json'], ['txt', 'text/plain']]) {
+      let f; try { f = new File([txt], `${name}.${ext}`, {type}); } catch (x) { break; }
+      if (navigator.canShare({files: [f]})) {
+        try { await navigator.share({files: [f], title: 'Бэкап воронки'}); toast('Готово'); return; }
+        catch (e) { if (e && e.name === 'AbortError') return; }
+      }
+    }
+  }
+  if (!mobile) {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([txt], {type: 'application/json'}));
+    a.download = `${name}.json`; document.body.append(a); a.click(); a.remove(); return;
+  }
+  closeParent && closeParent();
+  copyBackupSheet();
+}
+async function copyText(t) {
+  try { await navigator.clipboard.writeText(t); return true; }
+  catch (e) { try { const ta = document.createElement('textarea'); ta.value = t; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.append(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok; } catch (x) { return false; } }
+}
+function copyBackupSheet() {
+  const noPh = JSON.stringify({app: 'voronka', v: 1, at: new Date().toISOString(), girls: DB.girls});
+  openSheet(`<h2>Бэкап</h2>
+    <div class="sub" style="text-align:left;margin:-6px 0 14px">Telegram на телефоне не даёт мини-приложению сохранить файл. Скопируй бэкап и вставь в «Заметки» — восстановить можно вставкой в «Восстановить из бэкапа».</div>
+    <button class="list-btn" id="cbText">${IC.copy}<span>Скопировать без фото<small>${Math.round(noPh.length / 1024)} КБ — надёжно вставляется</small></span></button>
+    <button class="list-btn" id="cbFull">${IC.copy}<span>Скопировать с фото<small>${Math.round(JSON.stringify(PH).length / 1024 / 1024 * 10) / 10} МБ фото — может не влезть в заметку</small></span></button>`, (sh) => {
+    $('#cbText', sh).onclick = async () => toast(await copyText(noPh) ? 'Скопировано' : 'Не удалось скопировать');
+    $('#cbFull', sh).onclick = async () => toast(await copyText(JSON.stringify({app: 'voronka', v: 1, at: new Date().toISOString(), girls: DB.girls, photos: PH})) ? 'Скопировано' : 'Не удалось скопировать');
+  });
+}
 function importSheet() {
   openSheet(`<h2>Восстановить</h2>
     <button class="list-btn" id="iFile">${IC.ul}<span>Выбрать файл</span></button>
@@ -1295,7 +1327,7 @@ function importSheet() {
         });
       } catch (e) { hapN('error'); toast('Не похоже на бэкап'); }
     };
-    $('#iFile', sh).onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,application/json'; i.onchange = () => { const f = i.files[0]; if (f) f.text().then(apply); }; i.click(); };
+    $('#iFile', sh).onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,.txt,application/json,text/plain'; i.onchange = () => { const f = i.files[0]; if (f) f.text().then(apply); }; i.click(); };
     $('#iGo', sh).onclick = () => apply($('#iTxt', sh).value);
   });
 }
