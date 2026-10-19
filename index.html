@@ -286,6 +286,31 @@ textarea.auto{resize:none;overflow:hidden;display:block;line-height:1.4}
 <div id="hint" class="hint"></div>
 
 <script>
+// Crash guard: runs before the app. If start-up fails, show the reason and a way to get the data out instead of a blank screen.
+window.__booted = false;
+window.__fatal = function (msg) {
+  if (window.__booted) { try { console.error(msg); var t = document.getElementById('toast'); if (t && !window.__errShown) { window.__errShown = 1; t.innerHTML = '<div class="t">Ошибка: ' + String(msg).slice(0, 80).replace(/</g, '&lt;') + '</div>'; setTimeout(function () { t.innerHTML = ''; window.__errShown = 0; }, 4000); } } catch (e) {} return; }
+  if (document.getElementById('fatal')) return;
+  var raw = ''; try { raw = localStorage.getItem('vf_data_v1') || ''; } catch (e) {}
+  var d = document.createElement('div'); d.id = 'fatal';
+  d.style.cssText = 'position:fixed;inset:0;z-index:999;background:#0C0D11;color:#F4F4F7;font:15px/1.45 -apple-system,system-ui,sans-serif;padding:calc(env(safe-area-inset-top) + 90px) 20px 30px;overflow:auto';
+  d.innerHTML = '<div style="font-size:22px;font-weight:800;margin-bottom:8px">Приложение не запустилось</div>' +
+    '<div style="color:#9C9EAB;margin-bottom:14px">Данные на месте (' + (raw.length ? Math.max(1, Math.round(raw.length / 1024)) + ' КБ' : 'пусто') + '). Скопируй их на всякий случай и пришли текст ошибки.</div>' +
+    '<div style="background:#1D1F27;border-radius:12px;padding:10px 12px;font:12px/1.4 ui-monospace,monospace;color:#FF8A8A;word-break:break-word;margin-bottom:14px" id="fatalMsg"></div>' +
+    '<button id="fCopy" style="width:100%;height:48px;border:0;border-radius:14px;background:linear-gradient(135deg,#FF5C8A,#FF9346);color:#fff;font-weight:700;font-size:15px;margin-bottom:8px">Скопировать данные</button>' +
+    '<button id="fErr" style="width:100%;height:48px;border:0;border-radius:14px;background:#1D1F27;color:#F4F4F7;font-weight:700;font-size:15px;margin-bottom:8px">Скопировать ошибку</button>' +
+    '<button id="fReload" style="width:100%;height:48px;border:0;border-radius:14px;background:#1D1F27;color:#F4F4F7;font-weight:700;font-size:15px">Перезапустить</button>';
+  (document.body || document.documentElement).appendChild(d);
+  document.getElementById('fatalMsg').textContent = String(msg);
+  var cp = function (txt, btn) { var ok = false; try { var ta = document.createElement('textarea'); ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (e) {} if (navigator.clipboard) navigator.clipboard.writeText(txt).then(function () { btn.textContent = 'Скопировано ✓'; }, function () { btn.textContent = ok ? 'Скопировано ✓' : 'Не вышло'; }); else btn.textContent = ok ? 'Скопировано ✓' : 'Не вышло'; };
+  document.getElementById('fCopy').onclick = function () { cp(raw, this); };
+  document.getElementById('fErr').onclick = function () { cp(String(msg) + '\n' + navigator.userAgent, this); };
+  document.getElementById('fReload').onclick = function () { location.reload(); };
+};
+window.addEventListener('error', function (e) { window.__fatal((e.message || 'error') + (e.lineno ? ' @' + e.lineno + ':' + e.colno : '')); });
+window.addEventListener('unhandledrejection', function (e) { window.__fatal('async: ' + (e.reason && (e.reason.stack || e.reason.message) || e.reason)); });
+</script>
+<script>
 /* ============ base ============ */
 const tg = window.Telegram && window.Telegram.WebApp && window.Telegram.WebApp.initData !== undefined ? window.Telegram.WebApp : null;
 const ver = v => !!(tg && tg.isVersionAtLeast && tg.isVersionAtLeast(v));
@@ -376,7 +401,20 @@ const HINTS = {
 
 /* ============ storage ============ */
 const LS = 'vf_data_v1', LP = 'vf_prefs_v1';
-let DB = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {girls: [], savedAt: 0}; } catch (e) { return {girls: [], savedAt: 0}; } })();
+function cleanGirls(arr) {
+  return (Array.isArray(arr) ? arr : []).filter(g => g && typeof g === 'object' && g.id).map(g => {
+    g.st = g.st && typeof g.st === 'object' ? g.st : {1: '?'};
+    if (!Object.keys(g.st).length) g.st[1] = '?';
+    g.meets = Array.isArray(g.meets) ? g.meets.filter(m => m && m.id) : [];
+    if (typeof g.name !== 'string') g.name = g.name == null ? '' : String(g.name);
+    if (typeof g.loc !== 'string') g.loc = '';
+    if (typeof g.note !== 'string') g.note = '';
+    if (g.lost && (typeof g.lost !== 'object' || !g.lost.stage)) g.lost = null;
+    if (g.busy && typeof g.busy !== 'object') g.busy = null;
+    return g;
+  });
+}
+let DB = (() => { try { const d = JSON.parse(localStorage.getItem(LS)) || {}; return {...d, girls: cleanGirls(d.girls), savedAt: d.savedAt || 0}; } catch (e) { return {girls: [], savedAt: 0}; } })();
 let P = Object.assign({preset:'m', from:'', to:'', mode:'cohort'}, (() => { try { return JSON.parse(localStorage.getItem(LP)) || {}; } catch (e) { return {}; } })());
 const savePrefs = () => { try { localStorage.setItem(LP, JSON.stringify(P)); } catch (e) {} };
 function save() {
@@ -465,6 +503,7 @@ function mergeInto(remote) {
   if (!remote || !Array.isArray(remote.girls)) { res.remote = DB.girls.length > 0; return res; }
   const ldel = DB.del || {}, rdel = remote.del || {}, del = {...ldel};
   for (const [id, t] of Object.entries(rdel)) if (!(del[id] >= t)) { del[id] = t; }
+  remote.girls = cleanGirls(remote.girls);
   const map = new Map(DB.girls.map(g => [g.id, g])), rmap = new Map(remote.girls.map(g => [g.id, g]));
   const next = new Map(map);
   for (const [id, rg] of rmap) { const lg = map.get(id); if (!lg || (rg.upd || 0) > (lg.upd || 0)) next.set(id, rg); }
@@ -1179,7 +1218,7 @@ function settingsSheet() {
   openSheet(`<h2>Данные</h2>
     <div class="sub" style="text-align:left;margin:-6px 0 14px;display:flex;gap:6px;align-items:center">${DB.girls.length} ${plural(DB.girls.length,'карточка','карточки','карточек')} · ${Object.keys(PH).length} фото ${CS ? (cloudState.err ? '· <span style="color:var(--bad)">облако: ошибка</span>' : cloudState.ok ? '· облако ✓ ' + new Date(cloudState.ok).toTimeString().slice(0, 5) : '· облако…') : ''} ${q('storage')}</div>
     <button class="list-btn" id="sCopy">${IC.copy}<span>Скопировать бэкап<small>JSON в буфер обмена</small></span></button>
-    <button class="list-btn" id="sDl">${IC.dl}<span>Сохранить бэкап<small>Файл с фото — в «Файлы» или себе в Telegram</small></span></button>
+    <button class="list-btn" id="sDl">${IC.dl}<span>Сохранить бэкап<small>Файл с фото — лучше в «Файлы» (Сохранить в Файлы)</small></span></button>
     <button class="list-btn" id="sRec">${IC.spark}<span>Восстановление<small>Автокопии и поиск потерянных карточек</small></span></button>
     <button class="list-btn" id="sImp">${IC.ul}<span>Восстановить из бэкапа<small>Из файла или вставкой</small></span></button>
     ${demo ? `<button class="list-btn" id="sDemo">${IC.spark}<span>Убрать демо-данные<small>${demo} ${plural(demo,'карточка','карточки','карточек')}</small></span></button>` : ''}
@@ -1282,10 +1321,12 @@ async function exportBackup(txt, closeParent) {
   const name = `voronka-${today()}`;
   const mobile = (tg && /ios|android/i.test(tg.platform || '')) || /iPhone|iPad|Android/i.test(navigator.userAgent);
   if (navigator.share && navigator.canShare) {
-    for (const [ext, type] of [['json', 'application/json'], ['txt', 'text/plain']]) {
-      let f; try { f = new File([txt], `${name}.${ext}`, {type}); } catch (x) { break; }
+    // Not text/json: iOS share targets (e.g. Telegram) paste text files into the message box as one giant draft.
+    // An opaque binary type makes them save/send it as a document instead.
+    for (const [ext, type] of [['vbk', 'application/octet-stream'], ['bin', 'application/octet-stream']]) {
+      let f; try { f = new File([new TextEncoder().encode(txt)], `${name}.${ext}`, {type}); } catch (x) { break; }
       if (navigator.canShare({files: [f]})) {
-        try { await navigator.share({files: [f], title: 'Бэкап воронки'}); toast('Готово'); return; }
+        try { await navigator.share({files: [f]}); toast('Готово'); return; }
         catch (e) { if (e && e.name === 'AbortError') return; }
       }
     }
@@ -1327,7 +1368,7 @@ function importSheet() {
         });
       } catch (e) { hapN('error'); toast('Не похоже на бэкап'); }
     };
-    $('#iFile', sh).onclick = () => { const i = document.createElement('input'); i.type = 'file'; i.accept = '.json,.txt,application/json,text/plain'; i.onchange = () => { const f = i.files[0]; if (f) f.text().then(apply); }; i.click(); };
+    $('#iFile', sh).onclick = () => { const i = document.createElement('input'); i.type = 'file'; /* any file: backups are .vbk / .json / .txt */ i.onchange = () => { const f = i.files[0]; if (f) f.text().then(apply); }; i.click(); };
     $('#iGo', sh).onclick = () => apply($('#iTxt', sh).value);
   });
 }
@@ -1387,16 +1428,17 @@ function applyTheme() {
   try { if (ver('6.1')) { tg.setHeaderColor(bg); tg.setBackgroundColor(bg); } if (ver('7.10')) tg.setBottomBarColor(bg); } catch (e) {}
 }
 (async function boot() {
-  if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged'].forEach(ev => tg.onEvent(ev, applyInsets)); }
-  applyInsets();
-  applyTheme();
-  { let ch = ensureNums(); DB.girls.forEach(g => { if (syncStageMeets(g)) ch = true; if (!('ball' in g)) { g.ball = status(g) === 'active' ? AUTO_BALL[cur(g)] : ''; g.ballAt = lastDate(g) || today(); ch = true; } }); if (ch) save(); }
-  render();
-  await idb.open();
-  Object.assign(PH, await idb.all());
-  render();
-  dailySnapshot();
-  cloudSync();
+  const step = (name, fn) => { try { return fn(); } catch (e) { console.error(name, e); } };
+  step('tg', () => { if (tg) { tg.ready(); tg.expand(); try { if (ver('7.7')) tg.disableVerticalSwipes(); } catch (e) {} tg.onEvent('themeChanged', () => { applyTheme(); render(); }); ['safeAreaChanged','contentSafeAreaChanged','fullscreenChanged','viewportChanged'].forEach(ev => tg.onEvent(ev, applyInsets)); } });
+  step('insets', applyInsets);
+  step('theme', applyTheme);
+  step('migrate', () => { let ch = ensureNums(); DB.girls.forEach(g => { try { if (syncStageMeets(g)) ch = true; if (!('ball' in g)) { g.ball = status(g) === 'active' ? AUTO_BALL[cur(g)] : ''; g.ballAt = lastDate(g) || today(); ch = true; } } catch (e) { console.error('migrate', g.id, e); } }); if (ch) save(); });
+  render();                       // if this throws, the crash screen appears
+  window.__booted = true;
+  try { await Promise.race([idb.open(), new Promise(r => setTimeout(r, 3000))]); Object.assign(PH, await Promise.race([idb.all(), new Promise(r => setTimeout(() => r({}), 3000))])); } catch (e) {}
+  step('render2', render);
+  step('snap', dailySnapshot);
+  step('sync', cloudSync);
   document.addEventListener('visibilitychange', () => { if (document.hidden) cloudFlush(); else cloudSync(); });
   addEventListener('pagehide', cloudFlush);
 })();
