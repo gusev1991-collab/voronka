@@ -131,6 +131,10 @@ input::placeholder,textarea::placeholder{color:var(--tx3)}
 .rb-t i{position:absolute;left:0;top:0;bottom:0;opacity:.28;border-radius:9px}
 .rb-t span{position:relative;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .rb b{text-align:right;font-size:13px}
+.rb{grid-template-columns:1fr 24px 10px!important;cursor:pointer}
+.rb:active,.lr-h:active,.mt[data-ms]:active{opacity:.6}
+.lr-h{cursor:pointer}
+.rb .arrow{font-size:16px;color:var(--tx3)}
 .sr{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;font-weight:600;gap:8px}
 .sr:last-child{border:0}
 .sr .sp{flex:1}
@@ -363,8 +367,8 @@ const HINTS = {
   who: 'Кто инициировал перенос или отмену.',
   canc: 'Доля перенесённых и отменённых от всех назначенных встреч за период.',
   speed: 'Медиана — половина случаев быстрее, половина медленнее. Считается по выборке периода.',
-  losses: 'Сливы по этапу, на котором общение остановилось. Внутри — причины.',
-  storage: 'Всё хранится на этом устройстве. Текстовые данные дополнительно синхронизируются в облако Telegram (фото — нет). Делай экспорт для резервной копии.',
+  losses: 'Сливы по этапу, на котором общение остановилось. Внутри — причины.\n\nНажми на причину или этап — откроется список этих девушек. Плитки встреч тоже нажимаются.',
+  storage: 'Всё хранится на этом устройстве и синхронизируется через облако Telegram (кроме фото). При синхронизации каждая карточка сравнивается отдельно — побеждает более свежая правка, так что старое устройство не перезапишет новые данные.\n\nПриложение само делает автокопии (раз в день и перед каждым слиянием) — их видно в «Восстановление». Для надёжности иногда скачивай бэкап.',
   busy: 'Пауза — она занята до определённой даты или без срока: уехала, работа, учёба. Так видно, почему этап стоит.\n\nКогда дата наступит, карточка поднимется наверх списка с напоминанием написать. Пауза снимается сама, как только отметишь следующий этап.',
   ball: 'Чей ход — от кого ждём следующий шаг.\n\nМой — тебе надо написать или позвать.\nЕё — ты предложил, ждёшь ответа или её предложения.\n\nСтавится сам при отметке этапа (написал/позвал → её, ответила/встретились → мой). Меняй вручную, если иначе. Рядом видно, сколько дней длится.',
   inperiod: 'Показывать только девушек, с которыми было движение в выбранный период.',
@@ -399,32 +403,114 @@ const idb = {
 };
 const setPhoto = (id, v) => { if (v) { PH[id] = v; idb.put(id, v); } else { delete PH[id]; idb.del(id); } };
 
-// Telegram CloudStorage sync (text only)
+// ===== Telegram CloudStorage sync (text only) =====
+// Per-card merge: every card carries `upd`; deletions are kept as tombstones in DB.del.
+// Cloud copy is written as a new versioned set of chunks + a `head` pointer, so a broken write never corrupts the last good copy.
+// Legacy keys d0..dN / dn (old format) are never written or deleted — the recovery tool reads them.
 const CS = ver('6.9') && tg.CloudStorage ? tg.CloudStorage : null;
-let cloudT;
-function cloudSave() {
+const csCall = (fn, ...a) => new Promise(res => { try { CS[fn](...a, (e, v) => res(e ? {e: e || 'err'} : {v})); } catch (x) { res({e: x}); } });
+const CHUNK = 1300;
+let cloudT = null, cloudBusy = false, cloudAgain = false, cloudReady = false, cloudState = {ok: 0, err: ''};
+function cloudSave() { if (!CS) return; clearTimeout(cloudT); cloudT = setTimeout(cloudWrite, 500); }
+function cloudFlush() { if (!CS || !cloudT) return; clearTimeout(cloudT); cloudT = null; cloudWrite(); }
+async function cloudWrite() {
+  cloudT = null;
   if (!CS) return;
-  clearTimeout(cloudT);
-  cloudT = setTimeout(() => {
-    const s = JSON.stringify(DB), n = Math.ceil(s.length / 3800) || 1;
-    const parts = Array.from({length: n}, (_, i) => s.slice(i * 3800, (i + 1) * 3800));
-    let i = 0;
-    const next = () => { if (i < n) { CS.setItem('d' + i, parts[i], () => { i++; next(); }); } else CS.setItem('dn', String(n)); };
-    next();
-  }, 900);
+  if (cloudBusy || !cloudReady) { cloudAgain = true; return; }  // never push before the first merge with the cloud
+  cloudBusy = true; cloudAgain = false;
+  try {
+    const s = JSON.stringify({girls: DB.girls, del: DB.del || {}, savedAt: DB.savedAt}), v = Date.now().toString(36), n = Math.ceil(s.length / CHUNK) || 1;
+    let ok = true;
+    for (let i = 0; i < n && ok; i += 8) {
+      const rs = await Promise.all(Array.from({length: Math.min(8, n - i)}, (_, j) => csCall('setItem', `s${v}_${i + j}`, s.slice((i + j) * CHUNK, (i + j + 1) * CHUNK))));
+      ok = rs.every(r => !r.e);
+    }
+    if (ok) ok = !(await csCall('setItem', 'head', JSON.stringify({v, n, at: Date.now()}))).e;
+    if (ok) {
+      cloudState = {ok: Date.now(), err: ''};
+      const h = await csCall('getItem', 'head'), k = await csCall('getKeys');
+      let headV = v; try { headV = JSON.parse(h.v).v; } catch (x) {}
+      if (headV === v && k.v) {
+        const old = k.v.filter(x => /^s[0-9a-z]+_\d+$/.test(x) && !x.startsWith(`s${v}_`));
+        for (let i = 0; i < old.length; i += 50) await csCall('removeItems', old.slice(i, i + 50));
+      }
+    } else {
+      if (!cloudState.err) toast('Облако Telegram не ответило — данные сохранены на этом устройстве');
+      cloudState = {ok: cloudState.ok, err: 'write'};
+    }
+  } catch (x) { cloudState.err = 'write'; }
+  cloudBusy = false;
+  if (cloudAgain) cloudWrite();
 }
-function cloudLoad() {
-  if (!CS) return;
-  CS.getItem('dn', (e, v) => {
-    const n = +v; if (e || !n) { if (DB.girls.length) cloudSave(); return; }
-    CS.getItems(Array.from({length: n}, (_, i) => 'd' + i), (e2, vals) => {
-      if (e2 || !vals) return;
-      try {
-        const obj = JSON.parse(Array.from({length: n}, (_, i) => vals['d' + i] || '').join(''));
-        if (obj && obj.girls && (obj.savedAt || 0) > (DB.savedAt || 0)) { DB = obj; ensureNums(); try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (x) {} render(); }
-      } catch (x) {}
-    });
-  });
+async function csGetMany(keys) {
+  const out = {};
+  for (let i = 0; i < keys.length; i += 50) { const r = await csCall('getItems', keys.slice(i, i + 50)); if (r.e || !r.v) return null; Object.assign(out, r.v); }
+  return out;
+}
+async function cloudRead() {
+  if (!CS) return null;
+  const h = await csCall('getItem', 'head');
+  if (!h.e && h.v) {
+    try { const {v, n} = JSON.parse(h.v), keys = Array.from({length: n}, (_, i) => `s${v}_${i}`), vals = await csGetMany(keys); if (vals) return JSON.parse(keys.map(k => vals[k] || '').join('')); } catch (x) {}
+    return null;
+  }
+  const dn = await csCall('getItem', 'dn'), n = +(dn.v || 0);
+  if (!n) return null;
+  try { const keys = Array.from({length: n}, (_, i) => 'd' + i), vals = await csGetMany(keys); if (vals) return JSON.parse(keys.map(k => vals[k] || '').join('')); } catch (x) {}
+  return null;
+}
+// returns {local: bool (local changed), remote: bool (cloud needs our data)}
+function mergeInto(remote) {
+  const res = {local: false, remote: false};
+  if (!remote || !Array.isArray(remote.girls)) { res.remote = DB.girls.length > 0; return res; }
+  const ldel = DB.del || {}, rdel = remote.del || {}, del = {...ldel};
+  for (const [id, t] of Object.entries(rdel)) if (!(del[id] >= t)) { del[id] = t; }
+  const map = new Map(DB.girls.map(g => [g.id, g])), rmap = new Map(remote.girls.map(g => [g.id, g]));
+  const next = new Map(map);
+  for (const [id, rg] of rmap) { const lg = map.get(id); if (!lg || (rg.upd || 0) > (lg.upd || 0)) next.set(id, rg); }
+  for (const [id, g] of [...next]) if (del[id] >= (g.upd || 0)) next.delete(id);
+  for (const [id, g] of next) { if (map.get(id) !== g) res.local = true; const rg = rmap.get(id); if (!rg || (g.upd || 0) > (rg.upd || 0)) res.remote = true; }
+  for (const id of map.keys()) if (!next.has(id)) res.local = true;
+  for (const id of rmap.keys()) if (!next.has(id)) res.remote = true;
+  if (Object.keys(del).length !== Object.keys(rdel).length) res.remote = true;
+  if (Object.keys(del).length !== Object.keys(ldel).length) res.local = true;
+  if (res.local) { snapshot('до синхронизации'); DB.girls = [...next.values()]; DB.del = del; fixNums(); }
+  return res;
+}
+let syncing = false;
+async function cloudSync() {
+  if (!CS || syncing) return;
+  syncing = true;
+  try {
+    const remote = await cloudRead();
+    const r = mergeInto(remote);
+    if (r.local) { DB.savedAt = Date.now(); try { localStorage.setItem(LS, JSON.stringify(DB)); } catch (x) {} if (PAGE_ID) drawGirl(); render(); }
+    cloudReady = true;
+    if (r.remote || !remote) cloudWrite(); else cloudState = {ok: Date.now(), err: ''};
+  } catch (x) {}
+  syncing = false;
+  if (!cloudReady) { cloudReady = true; if (cloudAgain) cloudWrite(); }
+}
+const tomb = ids => { DB.del = DB.del || {}; const t = Date.now(); ids.forEach(id => DB.del[id] = t); };
+
+// ===== Local automatic copies =====
+const SNAP = 'vf_snap_';
+function snapList() { try { return Object.keys(localStorage).filter(k => k.startsWith(SNAP)).sort().reverse(); } catch (x) { return []; } }
+function snapshot(tag) {
+  try {
+    if (!DB.girls.length) return;
+    localStorage.setItem(SNAP + Date.now(), JSON.stringify({tag, at: Date.now(), girls: DB.girls, del: DB.del || {}}));
+    snapList().slice(20).forEach(k => localStorage.removeItem(k));
+  } catch (x) {}
+}
+function dailySnapshot() {
+  const last = snapList().map(k => +k.slice(SNAP.length)).filter(t => { try { return JSON.parse(localStorage.getItem(SNAP + t)).tag === 'ежедневная'; } catch (x) { return false; } })[0];
+  if (!last || ds(new Date(last)) !== today()) snapshot('ежедневная');
+}
+function fixNums() {
+  const seen = new Set(); let mx = Math.max(0, ...DB.girls.map(g => g.num || 0));
+  [...DB.girls].sort((a, b) => (a.created || 0) - (b.created || 0)).forEach(g => { if (g.num && seen.has(g.num)) g.num = ++mx; if (g.num) seen.add(g.num); });
+  ensureNums();
 }
 
 /* ============ girl logic ============ */
@@ -687,7 +773,7 @@ function renderFunnel(v) {
   $$('.fr').forEach(el => el.onclick = () => {
     const k = +el.dataset.k;
     const ids = (P.mode === 'cohort' ? pool.filter(g => g.st[k]) : DB.girls.filter(g => stInR(g, k, r))).map(g => g.id);
-    LF.reach = {k, ids, label: periodLabel()}; LF.stage = 0; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render();
+    LF.reach = {ids, c: S(k).c, label: `Дошли до «${S(k).n}» · ${periodLabel()}`}; LF.stage = 0; LF.status = 'all'; LF.period = false; TAB = 'list'; hap('soft'); render();
   });
   $$('[data-pk]').forEach(el => el.onclick = () => { LF.stage = +el.dataset.pk; LF.status = 'active'; LF.period = false; TAB = 'list'; hap('soft'); render(); });
 }
@@ -710,7 +796,7 @@ function renderList(v) {
   v.innerHTML = `
     <div class="search">${IC.search}<input id="qs" placeholder="Имя, место, заметка или №" value="${esc(LF.q)}"></div>
     <div class="chips">
-      ${LF.reach ? `<button class="chip on" id="rx" style="background:${S(LF.reach.k).c};color:#fff">Дошли до «${S(LF.reach.k).n}» · ${esc(LF.reach.label)}<span class="x">✕</span></button>` : ''}
+      ${LF.reach ? `<button class="chip on" id="rx" style="background:${LF.reach.c};color:#fff">${esc(LF.reach.label)}<span class="x">✕</span></button>` : ''}
       ${LF.stage ? `<button class="chip on" id="stx" style="background:${S(LF.stage).c};color:#fff">Сейчас: ${S(LF.stage).n}<span class="x">✕</span></button>` : ''}
       ${chip('active', 'В работе')}${cnt('me') ? chip('me', 'Мой ход') : ''}${cnt('her') ? chip('her', 'Жду её') : ''}${cnt('pause') ? chip('pause', '⏸ Пауза') : ''}${chip('done', 'Финал')}${chip('lost', 'Слив')}${chip('all', 'Все')}
       <button class="chip ${LF.period ? 'on' : ''}" id="lp">За период</button>
@@ -766,8 +852,8 @@ function renderWhy(v) {
   const stages = Object.keys(by).map(Number).sort((a, b) => a - b);
   const lossHTML = stages.length ? stages.map(k => {
     const items = Object.entries(by[k]).sort((a, b) => b[1] - a[1]), tot = items.reduce((s, x) => s + x[1], 0), mx = items[0][1];
-    return `<div class="lr"><div class="lr-h"><span class="dot" style="background:${S(k).c}"></span>${LOSS_T[k]}<span class="sp"></span><span class="num" style="color:var(--tx2)">${tot}</span></div>
-      ${items.map(([rs, n]) => `<div class="rb"><div class="rb-t"><i style="width:${n / mx * 100}%;background:${S(k).c}"></i><span>${esc(rs)}</span></div><b class="num">${n}</b></div>`).join('')}</div>`;
+    return `<div class="lr"><div class="lr-h" data-lk="${k}"><span class="dot" style="background:${S(k).c}"></span>${LOSS_T[k]}<span class="sp"></span><span class="num" style="color:var(--tx2)">${tot}</span></div>
+      ${items.map(([rs, n]) => `<div class="rb" data-lk="${k}" data-lr="${esc(rs)}"><div class="rb-t"><i style="width:${n / mx * 100}%;background:${S(k).c}"></i><span>${esc(rs)}</span></div><b class="num">${n}</b><span class="arrow">›</span></div>`).join('')}</div>`;
   }).join('') : `<div class="sub" style="padding:14px 0">Сливов за период нет</div>`;
 
   const meets = DB.girls.flatMap(g => g.meets).filter(m => inR(m.date, r));
@@ -781,13 +867,25 @@ function renderWhy(v) {
     <div class="card"><div class="ct">Где теряю <span class="num" style="color:var(--tx)">${lostSet.length}</span><span class="sp"></span>${q('losses')}</div>${lossHTML}</div>
     <div class="card"><div class="ct">Встречи<span class="sp"></span>${q('meets')}</div>
       <div class="mini">
-        <div class="mt"><b class="num" style="color:var(--plan)">${meets.length}</b><span>назначено</span></div>
-        <div class="mt"><b class="num" style="color:var(--ok)">${mc('done').length}</b><span>состоялись</span></div>
-        <div class="mt"><b class="num" style="color:var(--warn)">${mc('resch').length}</b><span>переносы</span><small>${who(mc('resch'))}</small></div>
-        <div class="mt"><b class="num" style="color:var(--bad)">${mc('cancel').length}</b><span>отмены</span><small>${who(mc('cancel'))}</small></div>
+        <div class="mt" data-ms="all"><b class="num" style="color:var(--plan)">${meets.length}</b><span>назначено</span></div>
+        <div class="mt" data-ms="done"><b class="num" style="color:var(--ok)">${mc('done').length}</b><span>состоялись</span></div>
+        <div class="mt" data-ms="resch"><b class="num" style="color:var(--warn)">${mc('resch').length}</b><span>переносы</span><small>${who(mc('resch'))}</small></div>
+        <div class="mt" data-ms="cancel"><b class="num" style="color:var(--bad)">${mc('cancel').length}</b><span>отмены</span><small>${who(mc('cancel'))}</small></div>
       </div>
     </div>
     <div class="card"><div class="ct">Скорость, медиана<span class="sp"></span>${q('speed')}</div>${spd}</div>`;
+  const go = (ids, label, c) => { LF.reach = {ids, label, c}; LF.stage = 0; LF.status = 'all'; LF.period = false; LF.q = ''; TAB = 'list'; hap('soft'); render(); $('#view').scrollTop = 0; };
+  $$('[data-lk]', v).forEach(el => el.onclick = () => {
+    const k = +el.dataset.lk, rs = el.dataset.lr;
+    const ids = lostSet.filter(g => g.lost.stage === k && (rs === undefined || (g.lost.reason || 'Без причины') === rs)).map(g => g.id);
+    go(ids, rs === undefined ? LOSS_T[k] : `${LOSS_T[k]}: ${rs}`, S(k).c);
+  });
+  const MSL = {all: ['Встречи', 'var(--plan)'], done: ['Встречи состоялись', 'var(--ok)'], resch: ['Переносы', 'var(--warn)'], cancel: ['Отмены', 'var(--bad)']};
+  $$('[data-ms]', v).forEach(el => el.onclick = () => {
+    const st = el.dataset.ms;
+    const ids = DB.girls.filter(g => g.meets.some(m => inR(m.date, r) && (st === 'all' || m.status === st))).map(g => g.id);
+    go(ids, `${MSL[st][0]} · ${periodLabel()}`, MSL[st][1]);
+  });
 }
 
 /* ============ girl page ============ */
@@ -889,7 +987,7 @@ function drawGirl() {
   const le = $('#pLostEdit'); if (le) le.onclick = () => lostSheet(g);
   const rb = $('#pRestore'); if (rb) rb.onclick = () => { g.lost = null; g.upd = Date.now(); save(); hapN('success'); drawGirl(); };
   $('#pDel').onclick = () => confirmBox(`Удалить ${g.name || 'карточку'} безвозвратно?`, () => {
-    DB.girls = DB.girls.filter(x => x.id !== g.id); setPhoto(g.id, null); save(); closeGirl(); toast('Удалено');
+    tomb([g.id]); DB.girls = DB.girls.filter(x => x.id !== g.id); setPhoto(g.id, null); save(); closeGirl(); toast('Удалено');
   });
 }
 
@@ -1079,10 +1177,11 @@ function periodSheet() {
 function settingsSheet() {
   const demo = DB.girls.filter(g => g.demo).length;
   openSheet(`<h2>Данные</h2>
-    <div class="sub" style="text-align:left;margin:-6px 0 14px;display:flex;gap:6px;align-items:center">${DB.girls.length} ${plural(DB.girls.length,'карточка','карточки','карточек')} · ${Object.keys(PH).length} фото ${CS ? '· облако TG вкл.' : ''} ${q('storage')}</div>
+    <div class="sub" style="text-align:left;margin:-6px 0 14px;display:flex;gap:6px;align-items:center">${DB.girls.length} ${plural(DB.girls.length,'карточка','карточки','карточек')} · ${Object.keys(PH).length} фото ${CS ? (cloudState.err ? '· <span style="color:var(--bad)">облако: ошибка</span>' : cloudState.ok ? '· облако ✓ ' + new Date(cloudState.ok).toTimeString().slice(0, 5) : '· облако…') : ''} ${q('storage')}</div>
     <button class="list-btn" id="sCopy">${IC.copy}<span>Скопировать бэкап<small>JSON в буфер обмена</small></span></button>
     <button class="list-btn" id="sDl">${IC.dl}<span>Скачать бэкап<small>Файл .json с фото</small></span></button>
-    <button class="list-btn" id="sImp">${IC.ul}<span>Восстановить<small>Из файла или вставкой</small></span></button>
+    <button class="list-btn" id="sRec">${IC.spark}<span>Восстановление<small>Автокопии и поиск потерянных карточек</small></span></button>
+    <button class="list-btn" id="sImp">${IC.ul}<span>Восстановить из бэкапа<small>Из файла или вставкой</small></span></button>
     ${demo ? `<button class="list-btn" id="sDemo">${IC.spark}<span>Убрать демо-данные<small>${demo} ${plural(demo,'карточка','карточки','карточек')}</small></span></button>` : ''}
     <button class="list-btn danger" id="sWipe">${IC.trash}<span>Стереть всё</span></button>`, (sh, close) => {
     const dump = () => JSON.stringify({app: 'voronka', v: 1, at: new Date().toISOString(), girls: DB.girls, photos: PH});
@@ -1096,9 +1195,87 @@ function settingsSheet() {
       a.download = `voronka-${today()}.json`; document.body.append(a); a.click(); a.remove();
     };
     $('#sImp', sh).onclick = () => { close(); importSheet(); };
-    const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); DB.girls = DB.girls.filter(g => !g.demo); ensureNums(true); save(); close(); render(); toast('Демо удалено'); };
+    $('#sRec', sh).onclick = () => { close(); recoverySheet(); };
+    const dm = $('#sDemo', sh); if (dm) dm.onclick = () => { DB.girls.filter(g => g.demo).forEach(g => setPhoto(g.id, null)); tomb(DB.girls.filter(g => g.demo).map(g => g.id)); DB.girls = DB.girls.filter(g => !g.demo); ensureNums(true); save(); close(); render(); toast('Демо удалено'); };
     $('#sWipe', sh).onclick = () => confirmBox('Стереть все карточки и фото? Это необратимо.', () => {
-      DB.girls.forEach(g => setPhoto(g.id, null)); DB.girls = []; save(); close(); render();
+      snapshot('перед удалением всего'); DB.girls.forEach(g => setPhoto(g.id, null)); tomb(DB.girls.map(g => g.id)); DB.girls = []; save(); close(); render();
+    });
+  });
+}
+function extractGirls(str) {
+  const out = []; let i = 0;
+  while ((i = str.indexOf('{"id":"', i)) !== -1) {
+    let depth = 0, inS = false, es = false, j = i;
+    for (; j < str.length; j++) {
+      const c = str[j];
+      if (inS) { if (es) es = false; else if (c === '\\') es = true; else if (c === '"') inS = false; }
+      else if (c === '"') inS = true; else if (c === '{') depth++; else if (c === '}') { if (--depth === 0) break; }
+    }
+    if (depth === 0 && j < str.length) { try { const o = JSON.parse(str.slice(i, j + 1)); if (o && o.st && typeof o.name === 'string' && Array.isArray(o.meets)) out.push(o); } catch (x) {} }
+    i += 7;
+  }
+  return out;
+}
+async function scanLost() {
+  const found = new Map(), add = (g, src) => { const c = found.get(g.id); if (!c || (g.upd || 0) > (c.g.upd || 0)) found.set(g.id, {g, src}); };
+  if (CS) {
+    const k = await csCall('getKeys');
+    if (k.v && k.v.length) {
+      const vals = await csGetMany(k.v) || {};
+      const legacy = k.v.filter(x => /^d\d+$/.test(x)).sort((a, b) => +a.slice(1) - +b.slice(1));
+      const cur = k.v.filter(x => /^s[0-9a-z]+_\d+$/.test(x)).sort((a, b) => { const [va, ia] = a.slice(1).split('_'), [vb, ib] = b.slice(1).split('_'); return va === vb ? ia - ib : va < vb ? -1 : 1; });
+      const texts = [legacy.map(x => vals[x] || '').join(''), cur.map(x => vals[x] || '').join(''), ...k.v.map(x => vals[x] || '')];
+      for (let i = 0; i + 1 < legacy.length; i++) texts.push((vals[legacy[i]] || '') + (vals[legacy[i + 1]] || ''));
+      texts.forEach(t => extractGirls(t).forEach(g => add(g, 'облако')));
+    }
+  }
+  snapList().forEach(key => { try { JSON.parse(localStorage.getItem(key)).girls.forEach(g => add(g, 'автокопия')); } catch (x) {} });
+  const curMap = new Map(DB.girls.map(g => [g.id, g])), del = DB.del || {};
+  return [...found.values()].filter(({g}) => { const c = curMap.get(g.id); return c ? (g.upd || 0) > (c.upd || 0) : !(del[g.id] >= (g.upd || 0)); })
+    .sort((a, b) => (b.g.upd || 0) - (a.g.upd || 0));
+}
+function recoverySheet() {
+  const snaps = snapList().map(k => { try { const o = JSON.parse(localStorage.getItem(k)); return {k, at: o.at, tag: o.tag, n: o.girls.length}; } catch (x) { return null; } }).filter(Boolean);
+  const orphans = Object.keys(PH).filter(id => !DB.girls.some(g => g.id === id));
+  const stTxt = g => { const c = cur(g); return g.lost ? 'слив' : c ? S(c).n : ''; };
+  const when = t => { const d = new Date(t); return `${d.getDate()} ${MON[d.getMonth()]} ${d.toTimeString().slice(0, 5)}`; };
+  openSheet(`<h2>Восстановление</h2>
+    <div class="slbl">Потерянные карточки</div>
+    <div id="rcScan"><div class="sub" style="text-align:left;margin:0 0 12px">Ищу в облаке Telegram и автокопиях…</div></div>
+    ${orphans.length ? `<div class="slbl">Фото без карточек · ${orphans.length}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${orphans.slice(0, 12).map(id => `<img src="${PH[id]}" style="width:44px;height:44px;border-radius:12px;object-fit:cover">`).join('')}</div>
+      <button class="list-btn" id="rcOrph">${IC.cam}<span>Создать карточки для этих фото<small>Имя и этапы впишешь заново</small></span></button>` : ''}
+    <div class="slbl">Автокопии на этом устройстве</div>
+    ${snaps.length ? snaps.map(s => `<button class="list-btn" data-snap="${s.k}"><span>${when(s.at)}<small>${esc(s.tag)} · ${s.n} ${plural(s.n, 'карточка', 'карточки', 'карточек')}</small></span></button>`).join('') : '<div class="sub" style="text-align:left;margin:0 0 12px">Пока нет — появятся с сегодняшнего дня</div>'}`, (sh, close) => {
+    scanLost().then(list => {
+      const box = $('#rcScan', sh); if (!box) return;
+      if (!list.length) { box.innerHTML = `<div class="sub" style="text-align:left;margin:0 0 12px">Более свежих версий не найдено</div>`; return; }
+      box.innerHTML = `<div class="sub" style="text-align:left;margin:0 0 8px">Найдено ${list.length} ${plural(list.length, 'карточка новее', 'карточки новее', 'карточек новее')} текущих данных</div>
+        ${list.map(({g, src}, i) => `<div class="g" style="margin-bottom:6px;animation:none">${avatar(g)}<div class="g-m"><div class="g-n"><span class="nm">${esc(g.name || 'Без имени')}</span>${g.num ? `<span class="gnum">#${g.num}</span>` : ''}</div><div class="g-s">${esc(stTxt(g))} · правка ${g.upd ? when(g.upd) : '?'} · ${src}</div><div class="prog">${STAGES.map(s => `<i style="${g.st[s.k] ? 'background:' + s.c : ''}"></i>`).join('')}</div></div><button class="adv" data-ri="${i}">Вернуть</button></div>`).join('')}
+        <button class="btn pri full" id="rcAll" style="margin:6px 0 14px">Вернуть все</button>`;
+      const apply = items => {
+        snapshot('перед восстановлением');
+        const now = Date.now();
+        items.forEach(({g}) => { const c = {...g, upd: now}; const i = DB.girls.findIndex(x => x.id === g.id); if (i >= 0) DB.girls[i] = c; else DB.girls.push(c); if (DB.del) delete DB.del[g.id]; });
+        fixNums(); save(); render(); hapN('success');
+      };
+      $$('[data-ri]', box).forEach(b => b.onclick = () => { apply([list[+b.dataset.ri]]); b.textContent = '✓'; b.disabled = true; toast('Карточка восстановлена'); });
+      $('#rcAll', box).onclick = () => confirmBox(`Вернуть ${list.length} ${plural(list.length, 'карточку', 'карточки', 'карточек')}?`, () => { apply(list); close(); toast('Восстановлено'); });
+    });
+    const ob = $('#rcOrph', sh);
+    if (ob) ob.onclick = () => {
+      const now = Date.now();
+      orphans.forEach((id, i) => { const g = newGirl({name: '', date: NODATE}); g.id = id; g.created = now + i; g.upd = now; DB.girls.push(g); if (DB.del) delete DB.del[id]; });
+      fixNums(); save(); close(); TAB = 'list'; LF.status = 'all'; LF.reach = null; LF.stage = 0; render(); toast(`Создано ${orphans.length} ${plural(orphans.length, 'карточка', 'карточки', 'карточек')}`);
+    };
+    $$('[data-snap]', sh).forEach(b => b.onclick = () => {
+      let o; try { o = JSON.parse(localStorage.getItem(b.dataset.snap)); } catch (x) { return; }
+      confirmBox(`Заменить текущие данные автокопией (${o.girls.length} ${plural(o.girls.length, 'карточка', 'карточки', 'карточек')})? Текущее состояние тоже сохранится автокопией.`, () => {
+        snapshot('перед восстановлением'); const now = Date.now(), keep = new Set(o.girls.map(g => g.id));
+        tomb(DB.girls.filter(g => !keep.has(g.id)).map(g => g.id));
+        o.girls.forEach(g => { g.upd = now; if (DB.del) delete DB.del[g.id]; });
+        DB.girls = o.girls; fixNums(); save(); close(); render(); hapN('success'); toast('Восстановлено из автокопии');
+      });
     });
   });
 }
@@ -1113,7 +1290,7 @@ function importSheet() {
         const o = JSON.parse(txt); if (!o || !Array.isArray(o.girls)) throw 0;
         confirmBox(`Заменить данные на ${o.girls.length} ${plural(o.girls.length,'карточку','карточки','карточек')}?`, () => {
           DB.girls.forEach(g => setPhoto(g.id, null));
-          DB.girls = o.girls; ensureNums(); if (o.photos) Object.entries(o.photos).forEach(([k, v]) => setPhoto(k, v));
+          snapshot('перед восстановлением'); const now = Date.now(), keep = new Set(o.girls.map(g => g.id)); tomb(DB.girls.filter(g => !keep.has(g.id)).map(g => g.id)); o.girls.forEach(g => { g.upd = now; if (DB.del) delete DB.del[g.id]; }); DB.girls = o.girls; fixNums(); if (o.photos) Object.entries(o.photos).forEach(([k, v]) => setPhoto(k, v));
           save(); close(); render(); hapN('success'); toast('Восстановлено');
         });
       } catch (e) { hapN('error'); toast('Не похоже на бэкап'); }
@@ -1186,7 +1363,10 @@ function applyTheme() {
   await idb.open();
   Object.assign(PH, await idb.all());
   render();
-  cloudLoad();
+  dailySnapshot();
+  cloudSync();
+  document.addEventListener('visibilitychange', () => { if (document.hidden) cloudFlush(); else cloudSync(); });
+  addEventListener('pagehide', cloudFlush);
 })();
 </script>
 </body>
